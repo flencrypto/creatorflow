@@ -10,6 +10,7 @@ import { Strategy as GoogleStrategy } from 'passport-google-oauth20';
 import { Strategy as FacebookStrategy } from 'passport-facebook';
 
 import { generateContentWithFallback } from './lib/openai.js';
+import { createOpenAiModelService } from './lib/openai-model-service.js';
 import {
   createImageEdit,
   createImageGeneration,
@@ -61,7 +62,7 @@ if (!process.env.OPEN_API_KEY && process.env.OPEN_AI_KEY) {
   process.env.OPEN_API_KEY = process.env.OPEN_AI_KEY;
 }
 
-const OPEN_API_KEY = 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;
+const OPEN_API_KEY = resolvedOpenApiKey;
 const connectorsCatalog = [
   {
     id: 'openai-content-generator',
@@ -97,10 +98,9 @@ const connectorsCatalog = [
   },
 ];
 
-const openAiModelCache = {
-  expiresAt: 0,
-  value: null,
-};
+const openAiModelService = OPEN_API_KEY
+  ? createOpenAiModelService({ apiKey: OPEN_API_KEY, logger: console })
+  : null;
 if (!OPEN_API_KEY) {
   console.warn(
     '[WARN] OPEN_API_KEY not set. /api/generate will return 500 until you configure it. Add OPEN_API_KEY (or the OPEN_AI_KEY repository secret) to resolve this.'
@@ -685,51 +685,6 @@ Return a strict JSON object with the shape:
 Use double quotes, no trailing comments, no markdown, and make descriptions focused on measurable impact.`;
 }
 
-async function fetchOpenAiModels() {
-  if (!OPEN_API_KEY) {
-    throw new Error('OPEN_API_KEY not configured on server. Provide OPEN_API_KEY or OPEN_AI_KEY.');
-  }
-
-  const now = Date.now();
-  if (openAiModelCache.value && openAiModelCache.expiresAt > now) {
-    return openAiModelCache.value;
-  }
-
-  const { signal, dispose } = createTimeoutSignal(6000);
-
-  try {
-    const response = await fetch('https://api.openai.com/v1/models?limit=50', {
-      headers: {
-        Authorization: `Bearer ${OPEN_API_KEY}`,
-      },
-      signal,
-    });
-
-    if (!response.ok) {
-      const text = await response.text().catch(() => '');
-      throw new Error(`Failed to load models: ${response.status} - ${text}`);
-    }
-
-    const payload = await response.json();
-    const models = Array.isArray(payload?.data)
-      ? payload.data
-          .filter((model) => typeof model?.id === 'string')
-          .map((model) => ({
-            id: model.id,
-            created: model.created || null,
-            ownedBy: model.owned_by || null,
-          }))
-      : [];
-
-    openAiModelCache.value = models;
-    openAiModelCache.expiresAt = Date.now() + 1000 * 60 * 5; // 5 minutes cache
-
-    return models;
-  } finally {
-    dispose();
-  }
-}
-
 async function sendOpenAiTestResponse(res) {
   try {
     await performOpenAiHealthCheck();
@@ -845,14 +800,16 @@ app.post('/api/content/analysis', requireAuth, async (req, res) => {
 app.get('/api/integrations', (_req, res) => {
   const connectors = buildIntegrationCatalogResponse();
 
+  const cacheInfo = openAiModelService?.getCacheInfo() ?? { size: 0, expiresAt: null };
+
   res.json({
     ok: true,
     connectors,
     meta: {
       openai: {
         configured: Boolean(OPEN_API_KEY),
-        cachedModels: Array.isArray(openAiModelCache.value) ? openAiModelCache.value.length : 0,
-        cacheExpiresAt: openAiModelCache.expiresAt || null,
+        cachedModels: cacheInfo.size,
+        cacheExpiresAt: cacheInfo.expiresAt,
       },
     },
   });
@@ -867,12 +824,12 @@ app.get('/api/integrations/openai/status', (_req, res) => {
 });
 
 app.get('/api/integrations/openai/models', async (_req, res) => {
-  if (!OPEN_API_KEY) {
+  if (!openAiModelService) {
     return res.status(503).json({ ok: false, error: 'OpenAI integration is not configured.' });
   }
 
   try {
-    const models = await fetchOpenAiModels();
+    const models = await openAiModelService.listModels();
     res.json({ ok: true, models });
   } catch (err) {
     console.error('[ERROR] /api/integrations/openai/models', err);

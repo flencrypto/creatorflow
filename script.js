@@ -6,6 +6,58 @@ document.addEventListener('DOMContentLoaded', function() {
     initializeApp();
 });
 
+// Lightweight notification system shared across pages
+function showNotification(message, type = 'info') {
+    const containerId = 'creatorflow-notifications';
+    let container = document.getElementById(containerId);
+
+    if (!container) {
+        container = document.createElement('div');
+        container.id = containerId;
+        container.setAttribute('role', 'region');
+        container.setAttribute('aria-live', 'polite');
+        container.className = 'fixed top-4 right-4 z-50 flex flex-col gap-3 max-w-sm';
+        document.body.appendChild(container);
+    }
+
+    const typeStyles = {
+        success: 'bg-emerald-500',
+        error: 'bg-rose-500',
+        warning: 'bg-amber-500',
+        info: 'bg-indigo-500'
+    };
+
+    const notification = document.createElement('div');
+    notification.className = `${typeStyles[type] || typeStyles.info} text-white px-4 py-3 rounded-lg shadow-lg flex items-start gap-3`;
+    notification.setAttribute('role', type === 'error' ? 'alert' : 'status');
+
+    const messageWrapper = document.createElement('span');
+    messageWrapper.textContent = message;
+    messageWrapper.className = 'flex-1 text-sm font-medium';
+
+    const closeButton = document.createElement('button');
+    closeButton.type = 'button';
+    closeButton.className = 'text-white/80 hover:text-white focus:outline-none focus:ring-2 focus:ring-white/60 rounded';
+    closeButton.setAttribute('aria-label', 'Dismiss notification');
+    closeButton.innerHTML = '&times;';
+
+    closeButton.addEventListener('click', () => {
+        if (notification.parentElement) {
+            notification.parentElement.removeChild(notification);
+        }
+    });
+
+    notification.appendChild(messageWrapper);
+    notification.appendChild(closeButton);
+    container.appendChild(notification);
+
+    setTimeout(() => {
+        if (notification.parentElement) {
+            notification.parentElement.removeChild(notification);
+        }
+    }, 4000);
+}
+
 // Add admin logout function
 function adminLogout() {
     localStorage.removeItem('admin_logged_in');
@@ -161,50 +213,61 @@ function loadTheme() {
 loadTheme();
 // Help search functionality
 function initHelpSearch() {
-    const searchInput = document.querySelector('input[placeholder*="Search for help articles"]');
-    const searchButton = document.querySelector('button:contains("Search")');
-    
-    if (searchInput && searchButton) {
-        searchButton.addEventListener('click', function(e) {
-            e.preventDefault();
-            const query = searchInput.value.trim().toLowerCase();
-            
-            if (query) {
-                // Simulate search - in a real app, this would call an API
-                const mockResults = {
-                    'getting started': ['How to Create Your First Content Project', 'Setting Up Your Account', 'Navigating the Dashboard'],
-                    'content generation': ['Using AI Content Generation Effectively', 'Crafting Effective Prompts', 'Optimizing Content Output'],
-                    'templates': ['Understanding Content Templates', 'Customizing Templates', 'Creating New Templates'],
-                    'export': ['Exporting Content to Social Media Platforms', 'Scheduling Posts', 'Cross-Platform Publishing'],
-                    'billing': ['Managing Your Subscription and Billing', 'Updating Payment Methods', 'Cancelling Your Account'],
-                    'troubleshooting': ['Common Content Generation Issues', 'Login and Account Problems', 'Export and Publishing Errors'],
-                    'integrations': ['Connecting Social Media Accounts', 'Setting Up Platform Integrations', 'Troubleshooting Connection Issues']
-                };
-                
-                // Find matching category
-                let matchingArticles = [];
-                for (const [category, articles] of Object.entries(mockResults)) {
-                    if (category.includes(query) || query.includes(category)) {
-                    matchingArticles = articles;
-                    break;
-                    }
-                }
-                
-                if (matchingArticles.length > 0) {
-                    showNotification(`Found ${matchingArticles.length} articles for "${query}"`, 'success');
-                    
-                    // In a real implementation, you would update the UI with search results
-                    // For now, we'll just show a notification
-                    console.log('Search results:', matchingArticles);
-                } else {
-                    showNotification(`No articles found for "${query}". Try different keywords.`, 'info');
-                }
-            } else {
-                showNotification('Please enter a search term', 'warning');
-            }
-        });
+    const searchInput = document.querySelector('[data-role=\"help-search-input\"]');
+    const searchButton = document.querySelector('[data-role=\"help-search-button\"]');
+
+    if (!searchInput || !searchButton) {
+        return;
     }
+
+    const performSearch = () => {
+        const query = searchInput.value.trim().toLowerCase();
+
+        if (!query) {
+            showNotification('Please enter a search term', 'warning');
+            return;
+        }
+
+        const mockResults = {
+            'getting started': ['How to Create Your First Content Project', 'Setting Up Your Account', 'Navigating the Dashboard'],
+            'content generation': ['Using AI Content Generation Effectively', 'Crafting Effective Prompts', 'Optimizing Content Output'],
+            'templates': ['Understanding Content Templates', 'Customizing Templates', 'Creating New Templates'],
+            'export': ['Exporting Content to Social Media Platforms', 'Scheduling Posts', 'Cross-Platform Publishing'],
+            'billing': ['Managing Your Subscription and Billing', 'Updating Payment Methods', 'Cancelling Your Account'],
+            'troubleshooting': ['Common Content Generation Issues', 'Login and Account Problems', 'Export and Publishing Errors'],
+            'integrations': ['Connecting Social Media Accounts', 'Setting Up Platform Integrations', 'Troubleshooting Connection Issues']
+        };
+
+        let matchingArticles = [];
+        for (const [category, articles] of Object.entries(mockResults)) {
+            if (category.includes(query) || query.includes(category)) {
+                matchingArticles = articles;
+                break;
+            }
+        }
+
+        if (matchingArticles.length > 0) {
+            showNotification(`Found ${matchingArticles.length} articles for "${query}"`, 'success');
+            console.log('Search results:', matchingArticles);
+            return;
+        }
+
+        showNotification(`No articles found for "${query}". Try different keywords.`, 'info');
+    };
+
+    searchButton.addEventListener('click', (event) => {
+        event.preventDefault();
+        performSearch();
+    });
+
+    searchInput.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            performSearch();
+        }
+    });
 }
+
 
 // Export functions for use in other modules
 window.CreatorFlow = {

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { mock, test } from 'node:test';
 
-import { createOpenAiClient } from '../lib/openai.js';
+import { generateContentWithFallback } from '../lib/openai.js';
 
 function buildResponse(body, { status = 200, headers = {} } = {}) {
   const payload = typeof body === 'string' ? body : JSON.stringify(body);
@@ -31,11 +31,44 @@ test('falls back to Responses API when chat completions return 405', async () =>
 
     throw new Error(`Unexpected URL ${url}`);
   });
+  const logger = { warn: mock.fn() };
 
-  const client = createOpenAiClient({ apiKey: 'test-key', fetch: fetchMock });
-  const result = await client.generateContent('example prompt');
+  const result = await generateContentWithFallback({
+    apiKey: 'test-key',
+    prompt: 'example prompt',
+    fetch: fetchMock,
+    logger,
+  });
 
   assert.equal(result, 'Fallback content from responses');
+  assert.equal(fetchMock.mock.callCount(), 2);
+  assert.equal(logger.warn.mock.callCount(), 1);
+});
+
+test('falls back to Responses API when chat completions hint to switch endpoints', async () => {
+  const fetchMock = mock.fn(async (url) => {
+    if (url.includes('/chat/completions')) {
+      return buildResponse(
+        { error: { message: 'Please use the Responses API instead.' } },
+        { status: 400 }
+      );
+    }
+
+    if (url.includes('/responses')) {
+      return buildResponse({ output_text: 'Handled by responses API' });
+    }
+
+    throw new Error(`Unexpected URL ${url}`);
+  });
+
+  const result = await generateContentWithFallback({
+    apiKey: 'test-key',
+    prompt: 'prompt',
+    fetch: fetchMock,
+    logger: { warn: () => {} },
+  });
+
+  assert.equal(result, 'Handled by responses API');
   assert.equal(fetchMock.mock.callCount(), 2);
 });
 
@@ -52,11 +85,15 @@ test('throws when both chat completions and responses fail', async () => {
     throw new Error(`Unexpected URL ${url}`);
   });
 
-  const client = createOpenAiClient({ apiKey: 'test-key', fetch: fetchMock });
-
-  await assert.rejects(client.generateContent('prompt'), {
-    message: /responses call failed/i,
-  });
+  await assert.rejects(
+    generateContentWithFallback({
+      apiKey: 'test-key',
+      prompt: 'prompt',
+      fetch: fetchMock,
+      logger: { warn: () => {} },
+    }),
+    { message: /responses call failed/i }
+  );
   assert.equal(fetchMock.mock.callCount(), 2);
 });
 
@@ -73,8 +110,12 @@ test('parses output_text field from responses payload', async () => {
     throw new Error(`Unexpected URL ${url}`);
   });
 
-  const client = createOpenAiClient({ apiKey: 'test-key', fetch: fetchMock });
-  const result = await client.generateContent('prompt');
+  const result = await generateContentWithFallback({
+    apiKey: 'test-key',
+    prompt: 'prompt',
+    fetch: fetchMock,
+    logger: { warn: () => {} },
+  });
 
   assert.equal(result, 'Trimmed response text');
   assert.equal(fetchMock.mock.callCount(), 2);

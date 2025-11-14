@@ -172,7 +172,8 @@
                 return;
             }
 
-            const allowedPattern = /^[A-Za-z0-9-]{16,128}$/;
+            // Allow legacy short keys and newer project-scoped keys like "sk-proj-..."
+            const allowedPattern = /^[A-Za-z0-9_-]{16,256}$/;
 
             const updateStatusMessage = () => {
                 const hasKey = Boolean(localStorage.getItem(API_KEY_STORAGE_KEY));
@@ -188,7 +189,7 @@
                 const trimmedKey = apiKeyInput.value.trim();
 
                 if (!allowedPattern.test(trimmedKey)) {
-                    showNotification('API keys must be 16-128 characters and use only letters, numbers, or dashes.', 'error');
+                    showNotification('API keys must be 16-256 characters and may include letters, numbers, dashes, or underscores (e.g., sk-proj-...).', 'error');
                     apiKeyInput.focus();
                     return;
                 }

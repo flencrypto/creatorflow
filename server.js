@@ -32,10 +32,14 @@ const FACEBOOK_CALLBACK_URL =
 
 const configuredAuthProviders = [];
 
-const AI_API_KEY = process.env.AI_API_KEY;
-if (!AI_API_KEY) {
+const OPEN_API_KEY = process.env.OPEN_API_KEY || process.env.AI_API_KEY || process.env.OPEN_AI_KEY;
+if (!OPEN_API_KEY) {
   console.warn(
-    '[WARN] AI_API_KEY not set. /api/generate will return 500 until you configure it.'
+    '[WARN] OPEN_API_KEY not set. /api/generate will return 500 until you configure it.'
+  );
+} else if (!process.env.OPEN_API_KEY) {
+  console.warn(
+    '[WARN] Falling back to legacy AI_API_KEY or OPEN_AI_KEY environment variables. Please rename it to OPEN_API_KEY.'
   );
 }
 
@@ -341,41 +345,84 @@ ${content.trim()}
 // This is where you call your provider.
 // Below is a skeleton for an OpenAI-style chat completion.
 // Swap endpoint/model as needed.
+function createTimeoutSignal(timeoutMs = 8000) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  return {
+    signal: controller.signal,
+    dispose: () => clearTimeout(timeout),
+  };
+}
+
 async function callAiProvider(prompt) {
-  if (!AI_API_KEY) {
-    throw new Error('AI_API_KEY not configured on server.');
+  if (!OPEN_API_KEY) {
+    throw new Error('OPEN_API_KEY not configured on server.');
   }
 
-  // Example: OpenAI Chat Completions API
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${AI_API_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: 'gpt-4o-mini', // or whatever model you use
-      messages: [
-        { role: 'system', content: 'You are a helpful content generation assistant.' },
-        { role: 'user', content: prompt },
-      ],
-      temperature: 0.7,
-      max_tokens: 400,
-    }),
-  });
+  const { signal, dispose } = createTimeoutSignal();
 
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`AI API error: ${response.status} - ${text}`);
+  try {
+    // Example: OpenAI Chat Completions API
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${OPEN_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini', // or whatever model you use
+        messages: [
+          { role: 'system', content: 'You are a helpful content generation assistant.' },
+          { role: 'user', content: prompt },
+        ],
+        temperature: 0.7,
+        max_tokens: 400,
+      }),
+      signal,
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`AI API error: ${response.status} - ${text}`);
+    }
+
+    const data = await response.json();
+    const content = data.choices?.[0]?.message?.content?.trim();
+    if (!content) {
+      throw new Error('AI API returned no content.');
+    }
+
+    return content;
+  } finally {
+    dispose();
+  }
+}
+
+async function performOpenAiHealthCheck() {
+  if (!OPEN_API_KEY) {
+    throw new Error('OPEN_API_KEY not configured.');
   }
 
-  const data = await response.json();
-  const content = data.choices?.[0]?.message?.content?.trim();
-  if (!content) {
-    throw new Error('AI API returned no content.');
-  }
+  const { signal, dispose } = createTimeoutSignal();
 
-  return content;
+  try {
+    const response = await fetch('https://api.openai.com/v1/models?limit=1', {
+      headers: {
+        Authorization: `Bearer ${OPEN_API_KEY}`,
+      },
+      signal,
+    });
+
+    if (!response.ok) {
+      const text = await response.text().catch(() => '');
+      throw new Error(`OpenAI status check failed: ${response.status} - ${text}`);
+    }
+
+    await response.json();
+  } finally {
+    dispose();
+  }
 }
 
 app.post('/api/generate', async (req, res) => {
@@ -435,6 +482,24 @@ app.post('/api/content/analysis', requireAuth, async (req, res) => {
       ok: false,
       error: 'Failed to analyze content. Please try again.',
     });
+  }
+});
+
+app.get('/api/integrations/openai/status', (_req, res) => {
+  res.json({
+    ok: true,
+    provider: 'openai',
+    configured: Boolean(OPEN_API_KEY),
+  });
+});
+
+app.post('/api/integrations/openai/test', async (_req, res) => {
+  try {
+    await performOpenAiHealthCheck();
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('[ERROR] /api/integrations/openai/test', err);
+    res.status(500).json({ ok: false, error: err.message || 'OpenAI integration test failed.' });
   }
 });
 

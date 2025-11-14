@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - CreatorFlow Studio</title>
+    <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/feather-icons/dist/feather.min.js"></script>
+    <script src="https://unpkg.com/feather-icons"></script>
+    <script src="components/navbar.js"></script>
+    <script src="components/footer.js"></script>
+    <script src="components/dashboard-stats.js"></script>
+    <script src="components/project-card.js"></script>
+</head>
+<body class="bg-gradient-to-br from-indigo-50 to-purple-100 min-h-screen">
+    <custom-navbar></custom-navbar>
+    
+    <main class="container mx-auto px-4 py-8 mt-16">
+        <!-- Page Header -->
+        <div class="flex flex-col md:flex-row md:items-center md:justify-between mb-8">
+            <div>
+                <h1 class="text-3xl font-bold text-gray-800">Dashboard</h1>
+                <p class="text-gray-600 mt-2">Welcome back! Here's your content creation overview.</p>
+            </div>
+            <div class="mt-4 md:mt-0">
+                <a href="editor.html" class="bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-lg font-semibold transition-all duration-300 transform hover:scale-105">
+                        + New Project
+                    </a>
+                </div>
+</div>
+
+        <!-- Stats Overview -->
+        <dashboard-stats></dashboard-stats>
+
+        <!-- Recent Projects -->
+        <section class="mt-12">
+            <h2 class="text-2xl font-bold text-gray-800 mb-6">Recent Projects</h2>
+            <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <project-card></project-card>
+                <project-card></project-card>
+                <project-card></project-card>
+            </div>
+        </section>
+
+        <!-- Quick Actions -->
+        <section class="mt-12">
+            <h2 class="text-2xl font-bold text-gray-800 mb-6">Quick Actions</h2>
+            <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <div class="bg-white rounded-xl p-6 shadow-lg hover:shadow-xl transition-all duration-300 cursor-pointer">
+                    <div class="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center mb-4">
+                        <i data-feather="edit-3" class="text-purple-600"></i>
+                    </div>
+                    <h3 class="text-lg font-semibold text-gray-800">Start Writing</h3>
+                    <p class="text-gray-600 text-sm mt-2">Create new content</p>
+                </div>
+                
+                <div class="bg-white rounded-xl p-6 shadow-lg hover:shadow-xl transition-all duration-300 cursor-pointer">
+                    <div class="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mb-4">
+                        <i data-feather="copy" class="text-blue-600"></i>
+                    </div>
+                    <h3 class="text-lg font-semibold text-gray-800">Use Template</h3>
+                    <p class="text-gray-600 text-sm mt-2">Quick start with templates</p>
+                </div>
+                
+                <div class="bg-white rounded-xl p-6 shadow-lg hover:shadow-xl transition-all duration-300 cursor-pointer">
+                    <div class="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center mb-4">
+                        <i data-feather="upload" class="text-green-600"></i>
+                    </div>
+                    <h3 class="text-lg font-semibold text-gray-800">Export</h3>
+                    <p class="text-gray-600 text-sm mt-2">Publish your content</p>
+                </div>
+                
+                <div class="bg-white rounded-xl p-6 shadow-lg hover:shadow-xl transition-all duration-300 cursor-pointer">
+                    <div class="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center mb-4">
+                        <i data-feather="bar-chart-2" class="text-orange-600"></i>
+                    </div>
+                    <h3 class="text-lg font-semibold text-gray-800">Analytics</h3>
+                    <p class="text-gray-600 text-sm mt-2">View performance</p>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <custom-footer></custom-footer>
+    <script src="script.js"></script>
+    <script>
+        feather.replace();
+    </script>
+</body>
+</html>

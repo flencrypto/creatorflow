@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard - CreatorFlow Studio</title>
+    <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/feather-icons/dist/feather.min.js"></script>
+    <script src="https://unpkg.com/feather-icons"></script>
+    <script src="components/navbar.js"></script>
+    <script src="components/footer.js"></script>
+</head>
+<body class="bg-gradient-to-br from-indigo-50 to-purple-100 min-h-screen">
+    <custom-navbar></custom-navbar>
+    
+    <main class="container mx-auto px-4 py-8 mt-16">
+        <div class="max-w-6xl mx-auto">
+            <!-- Dashboard Header -->
+            <div class="bg-white rounded-2xl p-8 shadow-xl mb-8">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center space-x-4">
+                        <div class="w-12 h-12 bg-gradient-to-r from-purple-600 to-indigo-600 rounded-2xl flex items-center justify-center">
+                            <i data-feather="shield" class="text-white w-6 h-6"></i>
+                        </div>
+                        <div>
+                            <h1 class="text-3xl font-bold text-gray-800">Admin Dashboard</h1>
+                            <p class="text-gray-600">Welcome back, Administrator</p>
+                        </div>
+                    </div>
+                    <button onclick="logout()" class="bg-red-500 hover:bg-red-600 text-white px-6 py-2 rounded-lg font-semibold transition-all duration-300">
+                        Logout
+                    </button>
+                </div>
+            </div>
+
+            <!-- Stats Grid -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                <div class="bg-white rounded-2xl p-6 shadow-xl">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-gray-600 text-sm">Total Users</p>
+                            <p class="text-3xl font-bold text-gray-800">1,234</p>
+                        </div>
+                        <div class="w-12 h-12 bg-blue-100 rounded-2xl flex items-center justify-center">
+                            <i data-feather="users" class="text-blue-600 w-6 h-6"></i>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="bg-white rounded-2xl p-6 shadow-xl">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-gray-600 text-sm">Active Projects</p>
+                            <p class="text-3xl font-bold text-gray-800">89</p>
+                        </div>
+                        <div class="w-12 h-12 bg-green-100 rounded-2xl flex items-center justify-center">
+                            <i data-feather="folder" class="text-green-600 w-6 h-6"></i>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="bg-white rounded-2xl p-6 shadow-xl">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-gray-600 text-sm">Revenue</p>
+                            <p class="text-3xl font-bold text-gray-800">$12.5K</p>
+                        </div>
+                        <div class="w-12 h-12 bg-purple-100 rounded-2xl flex items-center justify-center">
+                            <i data-feather="dollar-sign" class="text-purple-600 w-6 h-6"></i>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="bg-white rounded-2xl p-6 shadow-xl">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-gray-600 text-sm">Storage Used</p>
+                            <p class="text-3xl font-bold text-gray-800">65%</p>
+                        </div>
+                        <div class="w-12 h-12 bg-orange-100 rounded-2xl flex items-center justify-center">
+                            <i data-feather="hard-drive" class="text-orange-600 w-6 h-6"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Recent Activity -->
+            <div class="bg-white rounded-2xl p-8 shadow-xl">
+                <h2 class="text-2xl font-bold text-gray-800 mb-6">Recent Activity</h2>
+                <div class="space-y-4">
+                    <div class="flex items-center space-x-4 p-4 bg-gray-50 rounded-lg">
+                    <div class="w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center">
+                        <i data-feather="user-plus" class="text-white w-5 h-5"></i>
+                    </div>
+                    <div>
+                        <p class="font-semibold text-gray-800">New user registered</p>
+                        <p class="text-gray-600 text-sm">John Doe joined the platform</p>
+                        <p class="text-gray-500 text-xs">2 hours ago</p>
+                    </div>
+                </div>
+                
+                <div class="flex items-center space-x-4 p-4 bg-gray-50 rounded-lg">
+                    <div class="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center">
+                        <i data-feather="check-circle" class="text-white w-5 h-5"></i>
+                        </div>
+                        <div>
+                            <p class="font-semibold text-gray-800">Project completed</p>
+                            <p class="text-gray-600 text-sm">Website redesign project marked as done</p>
+                            <p class="text-gray-500 text-xs">5 hours ago</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <custom-footer></custom-footer>
+    <script src="script.js"></script>
+    <script>
+        feather.replace();
+        
+        function logout() {
+            window.location.href = 'admin-login.html';
+        }
+    </script>
+</body>
+</html>

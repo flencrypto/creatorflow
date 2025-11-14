@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Help Center - CreatorFlow Studio</title>
+    <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/feather-icons/dist/feather.min.js"></script>
+    <script src="https://unpkg.com/feather-icons"></script>
+    <script src="components/navbar.js"></script>
+    <script src="components/footer.js"></script>
+</head>
+<body class="bg-gradient-to-br from-indigo-50 to-purple-100 min-h-screen">
+    <custom-navbar></custom-navbar>
+    
+    <main class="container mx-auto px-4 py-8 mt-16">
+        <!-- Page Header -->
+        <div class="text-center mb-12">
+            <h1 class="text-4xl font-bold text-gray-800 mb-4">Help Center</h1>
+            <p class="text-xl text-gray-600 max-w-2xl mx-auto">
+                Find answers to common questions and get support for CreatorFlow Studio
+            </p>
+        </div>
+
+        <!-- Search Section -->
+        <div class="max-w-2xl mx-auto mb-12">
+            <div class="bg-white rounded-xl p-8 shadow-lg">
+                <div class="flex items-center border border-gray-300 rounded-lg px-4">
+                    <i data-feather="search" class="text-gray-400 w-5 h-5"></i>
+                    <input type="text" placeholder="Search for help articles..." class="w-full p-3 focus:outline-none">
+                    <button class="bg-purple-600 text-white px-6 py-3 rounded-lg font-medium transition-all duration-300 ml-4">
+                        Search
+                    </button>
+                </div>
+            </div>
+        <!-- FAQ Categories -->
+        <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-8 mb-16">
+            <!-- Getting Started -->
+            <div class="bg-white rounded-xl p-6 shadow-lg hover:shadow-xl transition-all duration-300 cursor-pointer">
+                <div class="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center mb-4">
+                    <i data-feather="play" class="text-green-600 w-6 h-6"></i>
+                </div>
+                <h3 class="text-xl font-bold text-gray-800 mb-3">Getting Started</h3>
+                <p class="text-gray-600">Learn the basics and set up your account</p>
+            </div>
+            
+            <!-- Content Creation -->
+            <div class="bg-white rounded-xl p-6 shadow-lg hover:shadow-xl transition-all duration-300">
+                    <div class="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mb-4">
+                        <i data-feather="edit-3" class="text-blue-600 w-6 h-6"></i>
+                </div>
+                <h3 class="text-xl font-bold text-gray-800 mb-3">Content Creation</h3>
+                <p class="text-gray-600">Generate and edit content with AI assistance</p>
+            </div>
+            
+            <!-- Templates -->
+            <div class="bg-white rounded-xl p-6 shadow-lg hover:shadow-xl transition-all duration-300">
+                <div class="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center mb-4">
+                    <i data-feather="layers" class="text-purple-600 w-6 h-6"></i>
+                </div>
+                <h3 class="text-xl font-bold text-gray-800 mb-3">Templates</h3>
+                <p class="text-gray-600">Use and customize content templates</p>
+            </div>
+            
+            <!-- Integrations -->
+            <div class="bg-white rounded-xl p-6 shadow-lg hover:shadow-xl transition-all duration-300">
+                    <div class="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center mb-4">
+                        <i data-feather="share-2" class="text-orange-600 w-6 h-6"></i>
+                </div>
+                <h3 class="text-xl font-bold text-gray-800 mb-3">Integrations</h3>
+                <p class="text-gray-600">Connect with other platforms and tools</p>
+            </div>
+            
+            <!-- Billing & Plans -->
+            <div class="bg-white rounded-xl p-6 shadow-lg hover:shadow-xl transition-all duration-300">
+                <div class="w-12 h-12 bg-red-100 rounded-lg flex items-center justify-center mb-4">
+                    <i data-feather="credit-card" class="text-red-600 w-6 h-6"></i>
+                </div>
+                <h3 class="text-xl font-bold text-gray-800 mb-3">Billing & Plans</h3>
+                <p class="text-gray-600">Manage your subscription and payments</p>
+            </div>
+            
+            <!-- Troubleshooting -->
+            <div class="bg-white rounded-xl p-6 shadow-lg hover:shadow-xl transition-all duration-300">
+                <div class="w-12 h-12 bg-indigo-100 rounded-lg flex items-center justify-center mb-4">
+                    <i data-feather="tool" class="text-indigo-600 w-6 h-6"></i>
+                </div>
+                <h3 class="text-xl font-bold text-gray-800 mb-3">Troubleshooting</h3>
+                <p class="text-gray-600">Solve common issues and errors</p>
+            </div>
+        </div>
+        <!-- Popular Articles -->
+        <section class="mb-16">
+            <h2 class="text-3xl font-bold text-gray-800 mb-8 text-center">Popular Help Articles</h2>
+            <div class="grid md:grid-cols-2 gap-8">
+                <div class="bg-white rounded-xl p-6 shadow-lg hover:shadow-xl transition-all duration-300">
+                    <h3 class="text-xl font-bold text-gray-800 mb-3">How to Create Your First Content Project</h3>
+                    <p class="text-gray-600 mb-4">A comprehensive guide to setting up your first project, choosing templates, and generating content with AI assistance.</p>
+                    <a href="#" class="text-purple-600 hover:text-purple-700 font-medium transition-colors duration-300">
+                        Read Article →
+                    </a>
+                </div>
+                
+                <div class="bg-white rounded-xl p-6 shadow-lg hover:shadow-xl transition-all duration-300">
+                    <h3 class="text-xl font-bold text-gray-800 mb-3">Using AI Content Generation Effectively</h3>
+                    <p class="text-gray-600 mb-4">Learn best practices for crafting effective prompts and getting the best results from our AI models.</p>
+                    <a href="#" class="text-purple-600 hover:text-purple-700 font-medium transition-colors duration-300">
+                        Read Article →
+                    </a>
+                </div>
+                
+                <div class="bg-white rounded-xl p-6 shadow-lg hover:shadow-xl transition-all duration-300">
+                    <h3 class="text-xl font-bold text-gray-800 mb-3">Exporting Content to Social Media Platforms</h3>
+                    <p class="text-gray-600 mb-4">Complete guide to publishing your content directly to Instagram, TikTok, YouTube, Twitter, and more.</p>
+                    <a href="#" class="text-purple-600 hover:text-purple-700 font-medium transition-colors duration-300">
+                        Read Article →
+                    </a>
+                </div>
+                
+                <div class="bg-white rounded-xl p-6 shadow-lg hover:shadow-xl transition-all duration-300">
+                        Read Article →
+                    </a>
+                </div>
+                
+                <div class="bg-white rounded-xl p-6 shadow-lg hover:shadow-xl transition-all duration-300">
+                    <h3 class="text-xl font-bold text-gray-800 mb-3">Understanding Content Templates</h3>
+                    <p class="text-gray-600 mb-4">How to use, customize, and create templates for different content types and platforms.</p>
+                    <a href="#" class="text-purple-600 hover:text-purple-700 font-medium transition-colors duration-300">
+                        Read Article →
+                    </a>
+                </div>
+                
+                <div class="bg-white rounded-xl p-6 shadow-lg hover:shadow-xl transition-all duration-300">
+                    <h3 class="text-xl font-bold text-gray-800 mb-3">Managing Your Subscription and Billing</h3>
+                    <p class="text-gray-600 mb-4">Learn how to update payment methods, change plans, and understand billing cycles.</p>
+                    <a href="#" class="text-purple-600 hover:text-purple-700 font-medium transition-colors duration-300">
+                        Read Article →
+                    </a>
+                </div>
+                
+                <div class="bg-white rounded-xl p-6 shadow-lg hover:shadow-xl transition-all duration-300">
+                        Read Article →
+                    </a>
+                </div>
+            </div>
+        </section>
+<!-- Contact Support -->
+        <section class="bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-2xl p-12 text-center">
+            <h2 class="text-3xl font-bold mb-4">Still Need Help?</h2>
+            <p class="text-xl mb-8 max-w-2xl mx-auto">
+                Our support team is here to help you get the most out of CreatorFlow Studio
+            </p>
+            <div class="flex flex-col sm:flex-row gap-4 justify-center">
+                <a href="contact.html" class="bg-white text-purple-600 hover:bg-purple-50 px-8 py-3 rounded-lg font-semibold transition-all duration-300 transform hover:scale-105">
+                    Contact Support
+                </a>
+                <a href="dashboard.html" class="border border-white text-white hover:bg-white hover:text-purple-600 px-8 py-3 rounded-lg font-semibold transition-all duration-300">
+                        Back to Dashboard
+                    </a>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <custom-footer></custom-footer>
+    <script src="assets/js/admin.js"></script>
+    <script src="script.js"></script>
+    <script>
+        feather.replace();
+    </script>
+</body>
+</html>

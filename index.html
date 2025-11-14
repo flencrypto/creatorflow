@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CreatorFlow Studio - AI Content Magic Wand</title>
+    <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/feather-icons/dist/feather.min.js"></script>
+    <script src="https://unpkg.com/feather-icons"></script>
+    <script src="components/navbar.js"></script>
+    <script src="components/footer.js"></script>
+    <script src="components/dashboard-stats.js"></script>
+    <script src="components/project-card.js"></script>
+</head>
+<body class="bg-gradient-to-br from-indigo-50 via-purple-100 to-pink-100 min-h-screen morph-bg">
+<custom-navbar></custom-navbar>
+    
+    <main class="container mx-auto px-4 py-8">
+        <!-- Hero Section -->
+        <section class="text-center mb-20 fade-in">
+            <h1 class="text-5xl md:text-7xl font-bold gradient-text-animate mb-6">
+                CreatorFlow Studio
+            </h1>
+            <p class="text-xl text-gray-600 mb-8 max-w-2xl mx-auto">
+                Your AI-powered content creation companion. Generate, organize, and publish stunning content across all platforms in seconds.
+            </p>
+            <div class="flex flex-col sm:flex-row gap-4 justify-center">
+                <a href="signup.html" class="btn-primary text-white px-8 py-4 rounded-xl font-semibold shadow-advanced float">
+                    Start Free Trial
+                </a>
+                <a href="#features" class="glass border border-purple-600 text-purple-600 hover:bg-purple-50 px-8 py-4 rounded-xl font-semibold transition-enhanced">
+                    Explore Features
+                </a>
+            </div>
+        </section>
+        <!-- Features Grid -->
+        <section id="features" class="grid md:grid-cols-2 lg:grid-cols-3 gap-8 mb-20 slide-up">
+            <div class="glass rounded-2xl p-8 shadow-advanced hover:shadow-advanced transition-enhanced card-hover">
+                <div class="w-16 h-16 bg-purple-100/50 rounded-2xl flex items-center justify-center mb-6">
+                    <i data-feather="zap" class="text-purple-600"></i>
+                </div>
+                <h3 class="text-2xl font-bold text-gray-800 mb-4">
+                Lightning Fast
+            </h3>
+            <p class="text-gray-600">Generate content in seconds with our optimized AI workflows and instant previews.</p>
+            </div>
+            
+            <div class="glass rounded-2xl p-8 shadow-advanced hover:shadow-advanced transition-enhanced card-hover">
+                <div class="w-16 h-16 bg-blue-100/50 rounded-2xl flex items-center justify-center mb-6">
+                    <i data-feather="layout" class="text-blue-600"></i>
+                </div>
+                <h3 class="text-2xl font-bold text-gray-800 mb-4">
+                Smart Templates
+            </h3>
+                <p class="text-gray-600">Reusable templates for different platforms and content types.</p>
+            </div>
+            
+            <div class="glass rounded-2xl p-8 shadow-advanced hover:shadow-advanced transition-enhanced card-hover">
+                <div class="w-16 h-16 bg-green-100/50 rounded-2xl flex items-center justify-center mb-6">
+                    <i data-feather="share-2" class="text-green-600"></i>
+                </div>
+                <h3 class="text-2xl font-bold text-gray-800 mb-4">
+                Multi-Platform
+            </h3>
+                <p class="text-gray-600">Export directly to TikTok, YouTube, Instagram, and more.</p>
+            </div>
+        </section>
+<!-- Demo Preview -->
+        <section class="bg-white rounded-2xl p-8 shadow-xl mb-16">
+            <h2 class="text-3xl font-bold text-center text-gray-800 mb-8">See It In Action</h2>
+            <div class="grid lg:grid-cols-2 gap-8 items-center">
+                <div class="space-y-4">
+                    <h3 class="text-xl font-semibold text-gray-700">From Idea to Published Content</h3>
+                    <p class="text-gray-600">Watch how CreatorFlow Studio transforms your creative process with seamless AI assistance.</p>
+                    <ul class="space-y-2 text-gray-600">
+                        <li class="flex items-center gap-2"><i data-feather="check" class="w-4 h-4 text-green-500"></i> Instant content generation</li>
+                        <li class="flex items-center gap-2"><i data-feather="check" class="w-4 h-4 text-green-500"></i> Real-time previews</li>
+                        <li class="flex items-center gap-2"><i data-feather="check" class="w-4 h-4 text-green-500"></i> Cross-platform optimization</li>
+                    </ul>
+                </div>
+                <div class="bg-gradient-to-br from-purple-500 to-indigo-600 rounded-xl p-1">
+                    <div class="bg-white rounded-lg p-4 h-64 flex items-center justify-center">
+                        <div class="text-center">
+                            <i data-feather="play-circle" class="w-16 h-16 text-purple-600 mx-auto mb-4"></i>
+                            <p class="text-gray-600 font-medium">Interactive Demo Preview</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <custom-footer></custom-footer>
+    <script src="assets/js/editor.js"></script>
+    <script src="script.js"></script>
+<script>
+        feather.replace();
+    </script>
+</body>
+</html>

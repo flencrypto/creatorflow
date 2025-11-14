@@ -86,29 +86,64 @@
                 </div>
             </div>
 
-            <!-- Recent Activity -->
-            <div class="bg-white rounded-2xl p-8 shadow-xl">
-                <h2 class="text-2xl font-bold text-gray-800 mb-6">Recent Activity</h2>
-                <div class="space-y-4">
-                    <div class="flex items-center space-x-4 p-4 bg-gray-50 rounded-lg">
-                    <div class="w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center">
-                        <i data-feather="user-plus" class="text-white w-5 h-5"></i>
-                    </div>
-                    <div>
-                        <p class="font-semibold text-gray-800">New user registered</p>
-                        <p class="text-gray-600 text-sm">John Doe joined the platform</p>
-                        <p class="text-gray-500 text-xs">2 hours ago</p>
-                    </div>
-                </div>
-                
-                <div class="flex items-center space-x-4 p-4 bg-gray-50 rounded-lg">
-                    <div class="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center">
-                        <i data-feather="check-circle" class="text-white w-5 h-5"></i>
-                        </div>
+            <!-- API Key Management -->
+            <div class="grid grid-cols-1 lg:grid-cols-5 gap-6 mb-8">
+                <div class="bg-white rounded-2xl p-8 shadow-xl lg:col-span-3">
+                    <h2 class="text-2xl font-bold text-gray-800 mb-4">API Configuration</h2>
+                    <p class="text-gray-600 mb-6">Safely store the API key used for third-party integrations. The key is kept in
+                        this browser and never displayed after saving.</p>
+                    <form id="api-key-form" class="space-y-6" novalidate>
                         <div>
-                            <p class="font-semibold text-gray-800">Project completed</p>
-                            <p class="text-gray-600 text-sm">Website redesign project marked as done</p>
-                            <p class="text-gray-500 text-xs">5 hours ago</p>
+                            <label for="api-key-input" class="block text-sm font-semibold text-gray-700 mb-2">API Key</label>
+                            <div class="flex rounded-lg shadow-sm border border-gray-200 focus-within:ring-2 focus-within:ring-purple-500 focus-within:border-transparent">
+                                <input id="api-key-input" name="api-key" type="password" autocomplete="off" required aria-describedby="api-key-help"
+                                    class="flex-1 px-4 py-3 rounded-l-lg text-gray-800 placeholder-gray-400 focus:outline-none"
+                                    placeholder="Enter API key" />
+                                <button type="button" id="toggle-api-key-visibility"
+                                    class="px-4 text-sm font-medium text-purple-600 hover:text-purple-700 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                                    aria-pressed="false" aria-label="Show API key">Show</button>
+                            </div>
+                            <p id="api-key-help" class="mt-2 text-xs text-gray-500">Keys must be 16-128 characters and contain only letters, numbers, and
+                                dashes.</p>
+                        </div>
+                        <p id="api-key-status" class="text-sm text-gray-500" role="status"></p>
+                        <div class="flex flex-wrap gap-3">
+                            <button type="submit"
+                                class="bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-lg font-semibold transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-purple-500">
+                                Save API Key
+                            </button>
+                            <button type="button" id="clear-api-key"
+                                class="bg-gray-100 hover:bg-gray-200 text-gray-700 px-6 py-3 rounded-lg font-semibold transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-gray-400">
+                                Remove Stored Key
+                            </button>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- Recent Activity -->
+                <div class="bg-white rounded-2xl p-8 shadow-xl lg:col-span-2">
+                    <h2 class="text-2xl font-bold text-gray-800 mb-6">Recent Activity</h2>
+                    <div class="space-y-4">
+                        <div class="flex items-center space-x-4 p-4 bg-gray-50 rounded-lg">
+                            <div class="w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center">
+                                <i data-feather="user-plus" class="text-white w-5 h-5"></i>
+                            </div>
+                            <div>
+                                <p class="font-semibold text-gray-800">New user registered</p>
+                                <p class="text-gray-600 text-sm">John Doe joined the platform</p>
+                                <p class="text-gray-500 text-xs">2 hours ago</p>
+                            </div>
+                        </div>
+
+                        <div class="flex items-center space-x-4 p-4 bg-gray-50 rounded-lg">
+                            <div class="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center">
+                                <i data-feather="check-circle" class="text-white w-5 h-5"></i>
+                            </div>
+                            <div>
+                                <p class="font-semibold text-gray-800">Project completed</p>
+                                <p class="text-gray-600 text-sm">Website redesign project marked as done</p>
+                                <p class="text-gray-500 text-xs">5 hours ago</p>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -120,10 +155,70 @@
     <script src="script.js"></script>
     <script>
         feather.replace();
-        
+
         function logout() {
             window.location.href = 'admin-login.html';
         }
+        (function manageApiKey() {
+            const API_KEY_STORAGE_KEY = 'creatorflow_admin_api_key';
+            const apiKeyForm = document.getElementById('api-key-form');
+            const apiKeyInput = document.getElementById('api-key-input');
+            const apiKeyStatus = document.getElementById('api-key-status');
+            const toggleVisibilityButton = document.getElementById('toggle-api-key-visibility');
+            const clearApiKeyButton = document.getElementById('clear-api-key');
+
+            if (!apiKeyForm || !apiKeyInput || !apiKeyStatus || !toggleVisibilityButton || !clearApiKeyButton) {
+                console.warn('API key management form is missing required elements.');
+                return;
+            }
+
+            const allowedPattern = /^[A-Za-z0-9-]{16,128}$/;
+
+            const updateStatusMessage = () => {
+                const hasKey = Boolean(localStorage.getItem(API_KEY_STORAGE_KEY));
+                apiKeyStatus.textContent = hasKey
+                    ? 'An API key is securely stored on this device. Saving a new key will overwrite the existing one.'
+                    : 'No API key stored yet. Add a key to enable API-powered features.';
+            };
+
+            updateStatusMessage();
+
+            apiKeyForm.addEventListener('submit', event => {
+                event.preventDefault();
+                const trimmedKey = apiKeyInput.value.trim();
+
+                if (!allowedPattern.test(trimmedKey)) {
+                    showNotification('API keys must be 16-128 characters and use only letters, numbers, or dashes.', 'error');
+                    apiKeyInput.focus();
+                    return;
+                }
+
+                try {
+                    localStorage.setItem(API_KEY_STORAGE_KEY, trimmedKey);
+                    apiKeyInput.value = '';
+                    updateStatusMessage();
+                    showNotification('API key saved for future sessions.', 'success');
+                } catch (error) {
+                    console.error('Failed to persist API key', error);
+                    showNotification('Unable to save the API key on this device.', 'error');
+                }
+            });
+
+            clearApiKeyButton.addEventListener('click', () => {
+                localStorage.removeItem(API_KEY_STORAGE_KEY);
+                updateStatusMessage();
+                showNotification('Stored API key removed.', 'info');
+            });
+
+            toggleVisibilityButton.addEventListener('click', () => {
+                const isCurrentlyHidden = apiKeyInput.type === 'password';
+                apiKeyInput.type = isCurrentlyHidden ? 'text' : 'password';
+                toggleVisibilityButton.textContent = isCurrentlyHidden ? 'Hide' : 'Show';
+                toggleVisibilityButton.setAttribute('aria-pressed', String(isCurrentlyHidden));
+                toggleVisibilityButton.setAttribute('aria-label', isCurrentlyHidden ? 'Hide API key' : 'Show API key');
+                apiKeyInput.focus();
+            });
+        })();
     </script>
 </body>
 </html>

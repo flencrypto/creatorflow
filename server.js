@@ -55,13 +55,25 @@ const FACEBOOK_CALLBACK_URL =
 const configuredAuthProviders = [];
 
 const resolvedOpenApiKey =
-  process.env.OPEN_API_KEY ?? process.env.OPEN_AI_KEY ?? process.env.AI_API_KEY ?? null;
+  process.env.OPEN_API_KEY?.trim() ??
+  process.env.OPEN_AI_KEY?.trim() ??
+  process.env.AI_API_KEY?.trim() ??
+  null;
 
-if (!process.env.OPEN_API_KEY && process.env.OPEN_AI_KEY) {
-  process.env.OPEN_API_KEY = process.env.OPEN_AI_KEY;
-}
+const openAiKeySource = (() => {
+  if (process.env.OPEN_API_KEY?.trim()) {
+    return 'OPEN_API_KEY';
+  }
+  if (process.env.OPEN_AI_KEY?.trim()) {
+    return 'OPEN_AI_KEY';
+  }
+  if (process.env.AI_API_KEY?.trim()) {
+    return 'AI_API_KEY';
+  }
+  return null;
+})();
 
-const OPEN_API_KEY = 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;
+const OPEN_API_KEY = resolvedOpenApiKey;
 const connectorsCatalog = [
   {
     id: 'openai-content-generator',
@@ -105,9 +117,9 @@ if (!OPEN_API_KEY) {
   console.warn(
     '[WARN] OPEN_API_KEY not set. /api/generate will return 500 until you configure it. Add OPEN_API_KEY (or the OPEN_AI_KEY repository secret) to resolve this.'
   );
-} else if (!process.env.OPEN_API_KEY && process.env.OPEN_AI_KEY) {
+} else if (openAiKeySource === 'OPEN_AI_KEY') {
   console.info('[INFO] Using OPEN_AI_KEY repository secret as OPEN_API_KEY.');
-} else if (!process.env.OPEN_API_KEY && process.env.AI_API_KEY) {
+} else if (openAiKeySource === 'AI_API_KEY') {
   console.warn('[WARN] Falling back to legacy AI_API_KEY environment variable.');
 }
 

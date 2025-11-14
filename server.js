@@ -7,6 +7,8 @@ import passport from 'passport';
 import { Strategy as GoogleStrategy } from 'passport-google-oauth20';
 import { Strategy as FacebookStrategy } from 'passport-facebook';
 
+import { createOpenAiClient } from './lib/openai.js';
+
 dotenv.config();
 
 const app = express();
@@ -79,6 +81,8 @@ const openAiModelCache = {
   expiresAt: 0,
   value: null,
 };
+
+const openAiClient = createOpenAiClient({ apiKey: OPEN_API_KEY });
 if (!OPEN_API_KEY) {
   console.warn(
     '[WARN] OPEN_API_KEY not set. /api/generate will return 500 until you configure it. Add OPEN_API_KEY (or the OPEN_AI_KEY repository secret) to resolve this.'
@@ -423,74 +427,6 @@ ${content.trim()}
 """`;
 }
 
-// This is where you call your provider.
-// Below is a skeleton for an OpenAI-style chat completion.
-// Swap endpoint/model as needed.
-function createTimeoutSignal(timeoutMs = 8000) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-
-  return {
-    signal: controller.signal,
-    dispose: () => clearTimeout(timeout),
-  };
-}
-
-async function callAiProvider(prompt, options = {}) {
-  if (!OPEN_API_KEY) {
-    throw new Error('OPEN_API_KEY not configured on server. Provide OPEN_API_KEY or OPEN_AI_KEY.');
-  }
-
-  const {
-    temperature = 0.7,
-    maxTokens = 400,
-    responseFormat = null,
-  } = options;
-
-  const { signal, dispose } = createTimeoutSignal();
-
-  try {
-    // Example: OpenAI Chat Completions API
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${OPEN_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini', // or whatever model you use
-        messages: [
-          { role: 'system', content: 'You are a helpful content generation assistant.' },
-          { role: 'user', content: prompt },
-        ],
-        temperature,
-        max_tokens: maxTokens,
-        ...(responseFormat
-          ? {
-              response_format: { type: responseFormat },
-            }
-          : {}),
-      }),
-      signal,
-    });
-
-    if (!response.ok) {
-      const text = await response.text();
-      throw new Error(`AI API error: ${response.status} - ${text}`);
-    }
-
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content?.trim();
-    if (!content) {
-      throw new Error('AI API returned no content.');
-    }
-
-    return content;
-  } finally {
-    dispose();
-  }
-}
-
 function validateConnectorSuggestionBody(body) {
   const { useCase, audience, channels, tone } = body || {};
 
@@ -571,24 +507,10 @@ async function fetchOpenAiModels() {
     return openAiModelCache.value;
   }
 
-  const { signal, dispose } = createTimeoutSignal(6000);
-
   try {
-    const response = await fetch('https://api.openai.com/v1/models?limit=50', {
-      headers: {
-        Authorization: `Bearer ${OPEN_API_KEY}`,
-      },
-      signal,
-    });
-
-    if (!response.ok) {
-      const text = await response.text().catch(() => '');
-      throw new Error(`Failed to load models: ${response.status} - ${text}`);
-    }
-
-    const payload = await response.json();
-    const models = Array.isArray(payload?.data)
-      ? payload.data
+    const payload = await openAiClient.listModels({ limit: 50 });
+    const models = Array.isArray(payload)
+      ? payload
           .filter((model) => typeof model?.id === 'string')
           .map((model) => ({
             id: model.id,
@@ -601,44 +523,20 @@ async function fetchOpenAiModels() {
     openAiModelCache.expiresAt = Date.now() + 1000 * 60 * 5; // 5 minutes cache
 
     return models;
-  } finally {
-    dispose();
+  } catch (error) {
+    openAiModelCache.value = null;
+    openAiModelCache.expiresAt = 0;
+    throw error;
   }
 }
 
 async function sendOpenAiTestResponse(res) {
   try {
-    await performOpenAiHealthCheck();
+    await openAiClient.performHealthCheck();
     res.json({ ok: true });
   } catch (err) {
     console.error('[ERROR] OpenAI integration test failed', err);
     res.status(500).json({ ok: false, error: err.message || 'OpenAI integration test failed.' });
-  }
-}
-
-async function performOpenAiHealthCheck() {
-  if (!OPEN_API_KEY) {
-    throw new Error('OPEN_API_KEY not configured. Provide OPEN_API_KEY or OPEN_AI_KEY.');
-  }
-
-  const { signal, dispose } = createTimeoutSignal();
-
-  try {
-    const response = await fetch('https://api.openai.com/v1/models?limit=1', {
-      headers: {
-        Authorization: `Bearer ${OPEN_API_KEY}`,
-      },
-      signal,
-    });
-
-    if (!response.ok) {
-      const text = await response.text().catch(() => '');
-      throw new Error(`OpenAI status check failed: ${response.status} - ${text}`);
-    }
-
-    await response.json();
-  } finally {
-    dispose();
   }
 }
 
@@ -660,7 +558,7 @@ app.post('/api/generate', async (req, res) => {
 
   try {
     const prompt = buildPrompt({ template, input, platform, tone });
-    const aiContent = await callAiProvider(prompt);
+    const aiContent = await openAiClient.generateContent(prompt);
 
     // Basic structured payload for future workflows
     return res.json({
@@ -702,7 +600,7 @@ app.post('/api/content/analysis', requireAuth, async (req, res) => {
       goals,
       creatorName: req.user?.displayName,
     });
-    const analysis = await callAiProvider(prompt);
+    const analysis = await openAiClient.generateContent(prompt);
 
     return res.json({
       ok: true,
@@ -768,7 +666,7 @@ app.post('/api/integrations/openai/connectors', async (req, res) => {
 
   try {
     const prompt = buildConnectorSuggestionPrompt(req.body);
-    const aiContent = await callAiProvider(prompt, {
+    const aiContent = await openAiClient.generateContent(prompt, {
       temperature: 0.4,
       maxTokens: 650,
       responseFormat: 'json_object',

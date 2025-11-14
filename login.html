@@ -19,6 +19,9 @@
         <div class="max-w-md mx-auto">
             <!-- Login Card -->
             <div class="bg-white rounded-2xl p-8 shadow-xl">
+                <div id="auth-error-banner" class="hidden mb-6 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                    We couldn't complete your social sign-in. Please try again or choose a different provider.
+                </div>
                 <div class="text-center mb-8">
                     <div class="w-16 h-16 bg-gradient-to-r from-purple-600 to-indigo-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
             <i data-feather="wand" class="text-white w-8 h-8"></i>
@@ -48,24 +51,50 @@
                 </a>
             </div>
 
-            <button type="submit" class="w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white py-3 rounded-lg font-semibold transition-all duration-300 transform hover:scale-105">
-                        Sign In
-                    </button>
-                </form>
+                <button type="submit" class="w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white py-3 rounded-lg font-semibold transition-all duration-300 transform hover:scale-105">
+                    Sign In
+                </button>
+            </form>
 
-                <div class="mt-6 text-center">
+            <div class="mt-8">
+                <div class="flex items-center gap-3 text-sm text-gray-500 uppercase tracking-wide">
+                    <span class="flex-1 border-t border-gray-200"></span>
+                    <span>or continue with</span>
+                    <span class="flex-1 border-t border-gray-200"></span>
+                </div>
+                <div id="social-login-container" class="mt-4 grid gap-3">
+                    <button data-provider="google" class="hidden w-full items-center justify-center gap-3 rounded-lg border border-gray-200 px-4 py-3 text-sm font-semibold text-gray-700 transition hover:border-purple-400 hover:text-purple-600 focus:outline-none focus:ring-2 focus:ring-purple-500/40">
+                        <span class="flex h-6 w-6 items-center justify-center rounded-full bg-white shadow-sm">
+                            <img src="assets/google-icon.svg" alt="Google" class="h-4 w-4" loading="lazy">
+                        </span>
+                        Continue with Google
+                    </button>
+                    <button data-provider="facebook" class="hidden w-full items-center justify-center gap-3 rounded-lg border border-gray-200 px-4 py-3 text-sm font-semibold text-gray-700 transition hover:border-purple-400 hover:text-purple-600 focus:outline-none focus:ring-2 focus:ring-purple-500/40">
+                        <span class="flex h-6 w-6 items-center justify-center rounded-full bg-[#1877f2]/10 text-[#1877f2]">
+                            <i data-feather="facebook"></i>
+                        </span>
+                        Continue with Facebook
+                    </button>
+                </div>
+                <p id="social-login-unavailable" class="mt-4 hidden text-center text-sm text-gray-500">
+                    Social sign-in is not configured yet. Ask your administrator to add a provider.
+                </p>
+            </div>
+
+            <div class="mt-6 text-center">
                     <p class="text-gray-600">
-                        Don't have an account? 
+                        Don't have an account?
                         <a href="signup.html" class="text-purple-600 hover:text-purple-700 font-medium transition-colors duration-300">
                             Start free trial
                         </a>
                     </p>
-</div>
+                </div>
             </div>
         </div>
     </main>
 
     <custom-footer></custom-footer>
+    <script src="assets/js/auth.js"></script>
     <script src="assets/js/admin.js"></script>
     <script src="script.js"></script>
     <script>

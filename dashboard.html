@@ -81,9 +81,60 @@
                 </div>
             </div>
         </section>
+
+        <section class="mt-12" id="content-analyzer">
+            <div class="bg-white rounded-2xl p-8 shadow-xl">
+                <div class="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                    <div>
+                        <h2 class="text-2xl font-bold text-gray-800">AI Content Coach</h2>
+                        <p class="text-gray-600">Paste a recent post and get actionable suggestions tailored to your goals.</p>
+                    </div>
+                    <div class="text-sm text-gray-500">
+                        <span class="inline-flex items-center gap-2 rounded-full border border-purple-200 bg-purple-50 px-3 py-1 font-medium text-purple-700">
+                            <i data-feather="sparkles" class="h-4 w-4"></i>
+                            Powered by CreatorFlow AI
+                        </span>
+                    </div>
+                </div>
+
+                <form id="analysis-form" class="mt-6 grid gap-5">
+                    <div>
+                        <label for="analysis-content" class="mb-2 block text-sm font-semibold text-gray-700">Content to review</label>
+                        <textarea id="analysis-content" name="analysis-content" rows="6" class="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-800 shadow-inner focus:border-purple-400 focus:outline-none focus:ring-2 focus:ring-purple-200" placeholder="Paste the caption, script, or post you want feedback on"></textarea>
+                    </div>
+
+                    <div class="grid gap-4 md:grid-cols-2">
+                        <div>
+                            <label for="analysis-platform" class="mb-2 block text-sm font-semibold text-gray-700">Platform (optional)</label>
+                            <input id="analysis-platform" type="text" placeholder="e.g. Instagram, TikTok" class="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-800 shadow-inner focus:border-purple-400 focus:outline-none focus:ring-2 focus:ring-purple-200">
+                        </div>
+                        <div>
+                            <label for="analysis-goals" class="mb-2 block text-sm font-semibold text-gray-700">Goals (optional)</label>
+                            <input id="analysis-goals" type="text" placeholder="Increase saves, drive sign-ups, tease launch..." class="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-800 shadow-inner focus:border-purple-400 focus:outline-none focus:ring-2 focus:ring-purple-200">
+                        </div>
+                    </div>
+
+                    <div class="flex items-center gap-4">
+                        <button id="analysis-submit" type="submit" class="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 px-6 py-3 text-sm font-semibold text-white shadow-lg transition hover:from-purple-700 hover:to-indigo-700 focus:outline-none focus:ring-2 focus:ring-purple-400">
+                            <i data-feather="message-circle" class="h-4 w-4"></i>
+                            Analyze my content
+                        </button>
+                        <p id="analysis-status" class="text-sm text-gray-500"></p>
+                    </div>
+                </form>
+
+                <div id="analysis-error" class="mt-4 hidden rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700"></div>
+
+                <div id="analysis-result" class="mt-8 hidden">
+                    <h3 class="text-xl font-semibold text-gray-800">AI Recommendations</h3>
+                    <pre id="analysis-output" class="mt-4 whitespace-pre-wrap rounded-xl border border-gray-200 bg-gray-50 p-6 text-sm text-gray-800 shadow-inner"></pre>
+                </div>
+            </div>
+        </section>
     </main>
 
     <custom-footer></custom-footer>
+    <script src="assets/js/dashboard.js"></script>
     <script src="script.js"></script>
     <script>
         feather.replace();

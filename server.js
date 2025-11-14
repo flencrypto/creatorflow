@@ -7,6 +7,8 @@ import passport from 'passport';
 import { Strategy as GoogleStrategy } from 'passport-google-oauth20';
 import { Strategy as FacebookStrategy } from 'passport-facebook';
 
+import { generateContentWithFallback } from './lib/openai.js';
+
 dotenv.config();
 
 const app = express();
@@ -441,54 +443,11 @@ async function callAiProvider(prompt, options = {}) {
     throw new Error('OPEN_API_KEY not configured on server. Provide OPEN_API_KEY or OPEN_AI_KEY.');
   }
 
-  const {
-    temperature = 0.7,
-    maxTokens = 400,
-    responseFormat = null,
-  } = options;
-
-  const { signal, dispose } = createTimeoutSignal();
-
-  try {
-    // Example: OpenAI Chat Completions API
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${OPEN_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini', // or whatever model you use
-        messages: [
-          { role: 'system', content: 'You are a helpful content generation assistant.' },
-          { role: 'user', content: prompt },
-        ],
-        temperature,
-        max_tokens: maxTokens,
-        ...(responseFormat
-          ? {
-              response_format: { type: responseFormat },
-            }
-          : {}),
-      }),
-      signal,
-    });
-
-    if (!response.ok) {
-      const text = await response.text();
-      throw new Error(`AI API error: ${response.status} - ${text}`);
-    }
-
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content?.trim();
-    if (!content) {
-      throw new Error('AI API returned no content.');
-    }
-
-    return content;
-  } finally {
-    dispose();
-  }
+  return generateContentWithFallback({
+    apiKey: OPEN_API_KEY,
+    prompt,
+    ...options,
+  });
 }
 
 function validateConnectorSuggestionBody(body) {

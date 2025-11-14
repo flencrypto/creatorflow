@@ -23,6 +23,7 @@ const notification = {
 };
 
 document.addEventListener('DOMContentLoaded', () => {
+    const apiClient = createApiClient();
     const statusBadge = document.getElementById('openai-status-badge');
     const statusText = document.getElementById('openai-status-text');
     const cacheDetails = document.getElementById('openai-cache-details');
@@ -41,11 +42,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function refreshCatalog() {
         try {
-            const response = await fetch('/api/integrations');
-            if (!response.ok) {
-                throw new Error(`Failed to load integrations (${response.status})`);
-            }
-
+            const response = await apiClient.fetch('/api/integrations');
             const data = await response.json();
             const connectors = Array.isArray(data?.connectors) ? data.connectors : [];
             renderConnectors(connectors);
@@ -211,11 +208,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 buttonDisabledState(event.currentTarget, true, 'Testing...');
                 try {
                     const endpoint = provider === 'openai' ? '/api/integrations/openai/test' : `/api/integrations/${provider}/test`;
-                    const response = await fetch(endpoint, { method: 'POST' });
-                    if (!response.ok) {
-                        const errorBody = await response.json().catch(() => ({}));
-                        throw new Error(errorBody?.error || `Test failed (${response.status})`);
-                    }
+                    await apiClient.fetch(endpoint, { method: 'POST' });
                     notification.success('Integration health check succeeded.');
                 } catch (error) {
                     console.error('Integration test failed', error);
@@ -231,12 +224,7 @@ document.addEventListener('DOMContentLoaded', () => {
         loadModelsBtn.addEventListener('click', async () => {
             buttonDisabledState(loadModelsBtn, true, 'Loading...');
             try {
-                const response = await fetch('/api/integrations/openai/models');
-                if (!response.ok) {
-                    const errorBody = await response.json().catch(() => ({}));
-                    throw new Error(errorBody?.error || `Failed to load models (${response.status})`);
-                }
-
+                const response = await apiClient.fetch('/api/integrations/openai/models');
                 const data = await response.json();
                 renderModels(data?.models || []);
                 notification.success('Loaded OpenAI models.');
@@ -308,16 +296,11 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             try {
-                const response = await fetch('/api/integrations/openai/connectors', {
+                const response = await apiClient.fetch('/api/integrations/openai/connectors', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload),
                 });
-
-                if (!response.ok) {
-                    const errorBody = await response.json().catch(() => ({}));
-                    throw new Error(errorBody?.error || `Failed with status ${response.status}`);
-                }
 
                 const data = await response.json();
                 renderConnectorSuggestions(data);
@@ -410,6 +393,148 @@ document.addEventListener('DOMContentLoaded', () => {
             button.disabled = false;
             button.classList.remove('opacity-70', 'cursor-not-allowed');
         }
+    }
+
+    function createApiClient() {
+        const apiBaseCandidates = buildApiBaseCandidates();
+        let resolvedBase = null;
+
+        function buildApiBaseCandidates() {
+            const bases = new Set();
+            const hintedBase = typeof window !== 'undefined' && typeof window.__API_BASE_URL === 'string'
+                ? window.__API_BASE_URL.trim()
+                : '';
+
+            if (hintedBase) {
+                try {
+                    bases.add(new URL(hintedBase, window.location.origin).toString());
+                } catch (error) {
+                    console.warn('Invalid __API_BASE_URL hint detected. Falling back to origin.', error);
+                }
+            }
+
+            if (typeof window !== 'undefined' && window.location) {
+                const { origin, href } = window.location;
+                if (origin) {
+                    bases.add(origin);
+                }
+                try {
+                    bases.add(new URL('.', href).toString());
+                } catch (error) {
+                    console.warn('Failed to derive relative API base from current location.', error);
+                }
+            }
+
+            return Array.from(bases).filter(Boolean);
+        }
+
+        function normalisePath(path) {
+            if (typeof path !== 'string') {
+                throw new Error('API path must be a string.');
+            }
+            return path.startsWith('/') ? path : `/${path}`;
+        }
+
+        function ensureTrailingSlash(input) {
+            return input.endsWith('/') ? input : `${input}/`;
+        }
+
+        function cloneInit(init = {}) {
+            const cloned = { ...init };
+            if (init.headers instanceof Headers) {
+                cloned.headers = new Headers(init.headers);
+            } else if (init.headers && typeof init.headers === 'object') {
+                cloned.headers = { ...init.headers };
+            }
+            return cloned;
+        }
+
+        async function readErrorMessage(response) {
+            const contentType = response.headers?.get?.('content-type') || '';
+            if (contentType.includes('application/json')) {
+                try {
+                    const payload = await response.clone().json();
+                    if (payload && typeof payload.error === 'string') {
+                        return payload.error;
+                    }
+                } catch (error) {
+                    console.warn('Failed to parse JSON error response.', error);
+                }
+            }
+            try {
+                const text = await response.clone().text();
+                return text ? text.trim() : null;
+            } catch (error) {
+                console.warn('Failed to read error response body.', error);
+                return null;
+            }
+        }
+
+        function createApiError(message, status, url) {
+            const error = new Error(message || 'API request failed.');
+            if (typeof status === 'number') {
+                error.status = status;
+            }
+            if (typeof url === 'string') {
+                error.url = url;
+            }
+            return error;
+        }
+
+        async function fetchWithFallback(path, init = {}) {
+            const apiPath = normalisePath(path);
+            const candidates = resolvedBase
+                ? [resolvedBase, ...apiBaseCandidates.filter((base) => base !== resolvedBase)]
+                : apiBaseCandidates;
+
+            if (!candidates.length) {
+                throw new Error('No API base candidates available.');
+            }
+
+            let last404Error = null;
+            let lastError = null;
+
+            for (const base of candidates) {
+                const target = new URL(apiPath.replace(/^\//, ''), ensureTrailingSlash(base)).toString();
+
+                try {
+                    const response = await fetch(target, cloneInit(init));
+
+                    if (response.ok) {
+                        resolvedBase = base;
+                        return response;
+                    }
+
+                    if (response.status === 404) {
+                        last404Error = createApiError('Request failed with status 404', 404, target);
+                        continue;
+                    }
+
+                    const errorMessage = await readErrorMessage(response);
+                    throw createApiError(errorMessage || `Request failed with status ${response.status}`, response.status, target);
+                } catch (error) {
+                    lastError = error;
+                    if (error.status === 404) {
+                        continue;
+                    }
+                    break;
+                }
+            }
+
+            if (lastError && lastError.status !== 404) {
+                throw lastError;
+            }
+
+            if (last404Error) {
+                throw last404Error;
+            }
+
+            throw new Error('Unable to reach API host.');
+        }
+
+        return {
+            fetch: fetchWithFallback,
+        };
     }
 
     bootstrap();

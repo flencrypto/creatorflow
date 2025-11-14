@@ -61,7 +61,7 @@ if (!process.env.OPEN_API_KEY && process.env.OPEN_AI_KEY) {
   process.env.OPEN_API_KEY = process.env.OPEN_AI_KEY;
 }
 
-const OPEN_API_KEY = resolvedOpenApiKey;
+const OPEN_API_KEY = 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;
 const connectorsCatalog = [
   {
     id: 'openai-content-generator',

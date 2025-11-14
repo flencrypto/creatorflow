@@ -21,6 +21,7 @@ CreatorFlow Studio now supports Google and Facebook OAuth for authentication, al
 
 ```
 SESSION_SECRET=replace-with-a-long-random-string
+# OPEN_API_KEY takes precedence; OPEN_AI_KEY is provided as a repository secret fallback
 OPEN_API_KEY=sk-...
 
 # Google OAuth

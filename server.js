@@ -32,7 +32,14 @@ const FACEBOOK_CALLBACK_URL =
 
 const configuredAuthProviders = [];
 
-const OPEN_API_KEY = process.env.OPEN_API_KEY || process.env.AI_API_KEY || process.env.OPEN_AI_KEY;
+const resolvedOpenApiKey =
+  process.env.OPEN_API_KEY ?? process.env.OPEN_AI_KEY ?? process.env.AI_API_KEY ?? null;
+
+if (!process.env.OPEN_API_KEY && process.env.OPEN_AI_KEY) {
+  process.env.OPEN_API_KEY = process.env.OPEN_AI_KEY;
+}
+
+const OPEN_API_KEY = resolvedOpenApiKey;
 const connectorsCatalog = [
   {
     id: 'openai-content-generator',
@@ -74,12 +81,12 @@ const openAiModelCache = {
 };
 if (!OPEN_API_KEY) {
   console.warn(
-    '[WARN] OPEN_API_KEY not set. /api/generate will return 500 until you configure it.'
+    '[WARN] OPEN_API_KEY not set. /api/generate will return 500 until you configure it. Add OPEN_API_KEY (or the OPEN_AI_KEY repository secret) to resolve this.'
   );
-} else if (!process.env.OPEN_API_KEY) {
-  console.warn(
-    '[WARN] Falling back to legacy AI_API_KEY or OPEN_AI_KEY environment variables. Please rename it to OPEN_API_KEY.'
-  );
+} else if (!process.env.OPEN_API_KEY && process.env.OPEN_AI_KEY) {
+  console.info('[INFO] Using OPEN_AI_KEY repository secret as OPEN_API_KEY.');
+} else if (!process.env.OPEN_API_KEY && process.env.AI_API_KEY) {
+  console.warn('[WARN] Falling back to legacy AI_API_KEY environment variable.');
 }
 
 const corsOrigins = process.env.CORS_ORIGIN
@@ -113,9 +120,6 @@ app.use(
 );
 app.use(passport.initialize());
 app.use(passport.session());
-
-// Serve static files (your HTML/CSS/JS)
-app.use(express.static('.')); // serves index.html, assets, etc. from project root
 
 function mapPassportProfile(profile) {
   return {
@@ -263,7 +267,7 @@ function buildIntegrationCatalogResponse() {
     const status = connected ? 'connected' : 'requires_configuration';
     const statusMessage = connected
       ? 'Active via server-side OpenAI credential.'
-      : 'Add OPEN_API_KEY to enable this connector.';
+      : 'Add OPEN_API_KEY (or set the OPEN_AI_KEY secret) to enable this connector.';
 
     return {
       ...connector,
@@ -434,7 +438,7 @@ function createTimeoutSignal(timeoutMs = 8000) {
 
 async function callAiProvider(prompt, options = {}) {
   if (!OPEN_API_KEY) {
-    throw new Error('OPEN_API_KEY not configured on server.');
+    throw new Error('OPEN_API_KEY not configured on server. Provide OPEN_API_KEY or OPEN_AI_KEY.');
   }
 
   const {
@@ -559,7 +563,7 @@ Use double quotes, no trailing comments, no markdown, and make descriptions focu
 
 async function fetchOpenAiModels() {
   if (!OPEN_API_KEY) {
-    throw new Error('OPEN_API_KEY not configured on server.');
+    throw new Error('OPEN_API_KEY not configured on server. Provide OPEN_API_KEY or OPEN_AI_KEY.');
   }
 
   const now = Date.now();
@@ -614,7 +618,7 @@ async function sendOpenAiTestResponse(res) {
 
 async function performOpenAiHealthCheck() {
   if (!OPEN_API_KEY) {
-    throw new Error('OPEN_API_KEY not configured.');
+    throw new Error('OPEN_API_KEY not configured. Provide OPEN_API_KEY or OPEN_AI_KEY.');
   }
 
   const { signal, dispose } = createTimeoutSignal();
@@ -639,6 +643,14 @@ async function performOpenAiHealthCheck() {
 }
 
 app.post('/api/generate', async (req, res) => {
+  if (!OPEN_API_KEY) {
+    return res.status(503).json({
+      ok: false,
+      error:
+        'OpenAI integration is not configured. Add OPEN_API_KEY (or set the OPEN_AI_KEY secret) on the server to enable content generation.',
+    });
+  }
+
   const validationError = validateGenerateBody(req.body);
   if (validationError) {
     return res.status(400).json({ error: validationError });
@@ -668,6 +680,14 @@ app.post('/api/generate', async (req, res) => {
 });
 
 app.post('/api/content/analysis', requireAuth, async (req, res) => {
+  if (!OPEN_API_KEY) {
+    return res.status(503).json({
+      ok: false,
+      error:
+        'OpenAI integration is not configured. Add OPEN_API_KEY (or set the OPEN_AI_KEY secret) on the server to enable content analysis.',
+    });
+  }
+
   const validationError = validateAnalysisBody(req.body);
   if (validationError) {
     return res.status(400).json({ ok: false, error: validationError });
@@ -785,6 +805,15 @@ app.post('/api/integrations/openai/test', async (_req, res) => {
 
   await sendOpenAiTestResponse(res);
 });
+
+// Serve static files (your HTML/CSS/JS)
+// Keep this after API route definitions so POST/PUT/etc. requests reach handlers instead of
+// returning 405 from the static middleware when assets are missing.
+app.use(
+  express.static('.', {
+    fallthrough: true,
+  })
+); // serves index.html, assets, etc. from project root
 
 app.listen(PORT, () => {
   console.log(`Server listening on http://localhost:${PORT}`);

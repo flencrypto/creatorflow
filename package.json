@@ -7,18 +7,34 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
+    "lint": "eslint server.js lib --ext .js",
+    "typecheck": "tsc --noEmit",
     "test": "node --test"
   },
   "dependencies": {
-    "cors": "^2.8.5",
-    "dotenv": "^16.3.1",
-    "express": "^4.18.2",
-    "express-session": "^1.17.3",
-    "multer": "^2.0.2",
-    "passport": "^0.7.0",
-    "passport-facebook": "^3.0.0",
-    "passport-google-oauth20": "^2.0.0",
-    "zod": "^3.25.76"
+    "cors": "2.8.5",
+    "dotenv": "16.3.1",
+    "express": "4.18.2",
+    "express-session": "1.17.3",
+    "multer": "2.0.2",
+    "passport": "0.7.0",
+    "passport-facebook": "3.0.0",
+    "passport-google-oauth20": "2.0.0",
+    "openai": "4.82.0",
+    "zod": "3.25.76"
+  },
+  "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "8.46.4",
+    "@typescript-eslint/parser": "8.46.4",
+    "eslint": "8.57.1",
+    "eslint-config-airbnb-base": "15.0.0",
+    "eslint-config-prettier": "9.1.2",
+    "eslint-plugin-import": "2.32.0",
+    "eslint-plugin-prettier": "5.5.4",
+    "eslint-plugin-security": "3.0.1",
+    "eslint-plugin-unicorn": "53.0.0",
+    "prettier": "3.6.2",
+    "typescript": "5.9.3"
   },
   "keywords": [
     "ai",

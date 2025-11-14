@@ -4,16 +4,36 @@ import dotenv from 'dotenv';
 import cors from 'cors';
 import session from 'express-session';
 import passport from 'passport';
+import multer from 'multer';
+import { z } from 'zod';
 import { Strategy as GoogleStrategy } from 'passport-google-oauth20';
 import { Strategy as FacebookStrategy } from 'passport-facebook';
 
 import { generateContentWithFallback } from './lib/openai.js';
+import {
+  createImageEdit,
+  createImageGeneration,
+  createImageVariation,
+  createVideoJob,
+  deleteVideoJob,
+  downloadVideoContent,
+  listVideoJobs,
+  remixVideoJob,
+  retrieveVideoJob,
+} from './lib/openai-media.js';
 
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 const NODE_ENV = process.env.NODE_ENV || 'development';
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 50 * 1024 * 1024, // 50MB safety limit for upstream assets
+  },
+});
 
 const SESSION_SECRET = process.env.SESSION_SECRET;
 if (!SESSION_SECRET) {
@@ -297,6 +317,151 @@ function safeParseJsonPayload(text) {
     console.warn('[WARN] Failed to parse JSON payload from AI response.', error);
     return null;
   }
+}
+
+const createVideoSchema = z.object({
+  prompt: z.string().min(1).max(2000),
+  model: z
+    .string()
+    .trim()
+    .min(1)
+    .max(100)
+    .optional(),
+  seconds: z
+    .coerce
+    .number()
+    .int()
+    .min(1)
+    .max(60)
+    .optional(),
+  size: z
+    .string()
+    .trim()
+    .regex(/^\d+x\d+$/)
+    .optional(),
+  quality: z
+    .string()
+    .trim()
+    .max(20)
+    .optional(),
+});
+
+const remixVideoSchema = z.object({
+  prompt: z.string().min(1).max(2000),
+});
+
+const listVideosSchema = z.object({
+  after: z
+    .string()
+    .trim()
+    .min(1)
+    .max(128)
+    .optional(),
+  limit: z
+    .coerce
+    .number()
+    .int()
+    .min(1)
+    .max(50)
+    .optional(),
+  order: z.enum(['asc', 'desc']).optional(),
+});
+
+const downloadVariantSchema = z.object({
+  variant: z
+    .string()
+    .trim()
+    .min(1)
+    .max(64)
+    .optional(),
+});
+
+const imageGenerationSchema = z.object({
+  prompt: z.string().min(1).max(32_000),
+  model: z.string().trim().min(1).max(100).optional(),
+  n: z.coerce.number().int().min(1).max(10).optional(),
+  size: z.string().trim().min(1).max(20).optional(),
+  responseFormat: z.enum(['url', 'b64_json']).optional(),
+  background: z.enum(['transparent', 'opaque', 'auto']).optional(),
+  quality: z.string().trim().min(1).max(20).optional(),
+  style: z.string().trim().min(1).max(20).optional(),
+  user: z.string().trim().min(1).max(64).optional(),
+  moderation: z.string().trim().min(1).max(20).optional(),
+  outputFormat: z.string().trim().min(1).max(10).optional(),
+  outputCompression: z.coerce.number().int().min(0).max(100).optional(),
+  partialImages: z.coerce.number().int().min(0).max(3).optional(),
+  stream: z.coerce.boolean().optional(),
+});
+
+const imageEditOptionsSchema = z.object({
+  prompt: z.string().min(1).max(32_000),
+  model: z.string().trim().min(1).max(100).optional(),
+  n: z.coerce.number().int().min(1).max(10).optional(),
+  size: z.string().trim().min(1).max(20).optional(),
+  responseFormat: z.enum(['url', 'b64_json']).optional(),
+  background: z.enum(['transparent', 'opaque', 'auto']).optional(),
+  quality: z.string().trim().min(1).max(20).optional(),
+  user: z.string().trim().min(1).max(64).optional(),
+  outputFormat: z.string().trim().min(1).max(10).optional(),
+  outputCompression: z.coerce.number().int().min(0).max(100).optional(),
+});
+
+const imageVariationOptionsSchema = z.object({
+  model: z.string().trim().min(1).max(100).optional(),
+  n: z.coerce.number().int().min(1).max(10).optional(),
+  size: z.string().trim().min(1).max(20).optional(),
+  responseFormat: z.enum(['url', 'b64_json']).optional(),
+  user: z.string().trim().min(1).max(64).optional(),
+});
+
+function toSnakeCasePayload(data) {
+  return Object.fromEntries(
+    Object.entries(data).map(([key, value]) => {
+      if (value === undefined || value === null) {
+        return [null, null];
+      }
+
+      const snakeKey = key.replace(/[A-Z]/g, (char) => `_${char.toLowerCase()}`);
+      return [snakeKey, value];
+    }).filter(([key]) => Boolean(key))
+  );
+}
+
+function normaliseMulterFile(file) {
+  if (!file) {
+    return null;
+  }
+
+  return {
+    buffer: file.buffer,
+    mimetype: file.mimetype,
+    filename: file.originalname,
+  };
+}
+
+function normaliseErrorStatus(error, fallback = 500) {
+  const status = typeof error?.status === 'number' ? error.status : fallback;
+  if (status >= 400 && status <= 599) {
+    return status;
+  }
+  return fallback;
+}
+
+function extractOpenAiErrorMessage(error, fallbackMessage) {
+  if (error?.status && error.status >= 400 && error.status < 500) {
+    if (typeof error?.body === 'string' && error.body.trim().length > 0) {
+      return error.body.trim().slice(0, 500);
+    }
+    if (typeof error?.message === 'string' && error.message.trim().length > 0) {
+      return error.message.trim();
+    }
+  }
+
+  if (typeof error?.message === 'string' && error.message.trim().length > 0 && error.message.length < 140) {
+    return error.message.trim();
+  }
+
+  return fallbackMessage;
 }
 
 // Basic input validation helper
@@ -764,6 +929,300 @@ app.post('/api/integrations/openai/test', async (_req, res) => {
 
   await sendOpenAiTestResponse(res);
 });
+
+app.post(
+  '/api/integrations/openai/videos',
+  requireAuth,
+  upload.single('input_reference'),
+  async (req, res) => {
+    if (!OPEN_API_KEY) {
+      return res.status(503).json({ ok: false, error: 'OpenAI integration is not configured.' });
+    }
+
+    const validation = createVideoSchema.safeParse({
+      prompt: req.body?.prompt,
+      model: req.body?.model,
+      seconds: req.body?.seconds,
+      size: req.body?.size,
+      quality: req.body?.quality,
+    });
+
+    if (!validation.success) {
+      const issue = validation.error.issues[0];
+      return res.status(400).json({ ok: false, error: issue?.message || 'Invalid payload.' });
+    }
+
+    try {
+      const video = await createVideoJob({
+        apiKey: OPEN_API_KEY,
+        ...validation.data,
+        inputReference: normaliseMulterFile(req.file),
+      });
+
+      return res.json({ ok: true, video });
+    } catch (error) {
+      console.error('[ERROR] /api/integrations/openai/videos', error);
+      const status = normaliseErrorStatus(error);
+      return res.status(status).json({
+        ok: false,
+        error: extractOpenAiErrorMessage(error, 'Failed to create video job.'),
+      });
+    }
+  }
+);
+
+app.post('/api/integrations/openai/videos/:videoId/remix', requireAuth, async (req, res) => {
+  if (!OPEN_API_KEY) {
+    return res.status(503).json({ ok: false, error: 'OpenAI integration is not configured.' });
+  }
+
+  const validation = remixVideoSchema.safeParse({ prompt: req.body?.prompt });
+  if (!validation.success) {
+    const issue = validation.error.issues[0];
+    return res.status(400).json({ ok: false, error: issue?.message || 'Invalid payload.' });
+  }
+
+  try {
+    const video = await remixVideoJob({
+      apiKey: OPEN_API_KEY,
+      videoId: req.params.videoId,
+      prompt: validation.data.prompt,
+    });
+    return res.json({ ok: true, video });
+  } catch (error) {
+    console.error('[ERROR] /api/integrations/openai/videos/:videoId/remix', error);
+    const status = normaliseErrorStatus(error);
+    return res.status(status).json({
+      ok: false,
+      error: extractOpenAiErrorMessage(error, 'Failed to remix video.'),
+    });
+  }
+});
+
+app.get('/api/integrations/openai/videos', requireAuth, async (req, res) => {
+  if (!OPEN_API_KEY) {
+    return res.status(503).json({ ok: false, error: 'OpenAI integration is not configured.' });
+  }
+
+  const validation = listVideosSchema.safeParse({
+    after: Array.isArray(req.query.after) ? req.query.after[0] : req.query.after,
+    limit: Array.isArray(req.query.limit) ? req.query.limit[0] : req.query.limit,
+    order: Array.isArray(req.query.order) ? req.query.order[0] : req.query.order,
+  });
+
+  if (!validation.success) {
+    const issue = validation.error.issues[0];
+    return res.status(400).json({ ok: false, error: issue?.message || 'Invalid query parameters.' });
+  }
+
+  try {
+    const videos = await listVideoJobs({
+      apiKey: OPEN_API_KEY,
+      ...validation.data,
+    });
+    return res.json({ ok: true, videos });
+  } catch (error) {
+    console.error('[ERROR] /api/integrations/openai/videos', error);
+    const status = normaliseErrorStatus(error);
+    return res.status(status).json({
+      ok: false,
+      error: extractOpenAiErrorMessage(error, 'Failed to list videos.'),
+    });
+  }
+});
+
+app.get('/api/integrations/openai/videos/:videoId', requireAuth, async (req, res) => {
+  if (!OPEN_API_KEY) {
+    return res.status(503).json({ ok: false, error: 'OpenAI integration is not configured.' });
+  }
+
+  try {
+    const video = await retrieveVideoJob({
+      apiKey: OPEN_API_KEY,
+      videoId: req.params.videoId,
+    });
+    return res.json({ ok: true, video });
+  } catch (error) {
+    console.error('[ERROR] /api/integrations/openai/videos/:videoId', error);
+    const status = normaliseErrorStatus(error);
+    return res.status(status).json({
+      ok: false,
+      error: extractOpenAiErrorMessage(error, 'Failed to retrieve video.'),
+    });
+  }
+});
+
+app.delete('/api/integrations/openai/videos/:videoId', requireAuth, async (req, res) => {
+  if (!OPEN_API_KEY) {
+    return res.status(503).json({ ok: false, error: 'OpenAI integration is not configured.' });
+  }
+
+  try {
+    const response = await deleteVideoJob({
+      apiKey: OPEN_API_KEY,
+      videoId: req.params.videoId,
+    });
+    return res.json({ ok: true, video: response });
+  } catch (error) {
+    console.error('[ERROR] DELETE /api/integrations/openai/videos/:videoId', error);
+    const status = normaliseErrorStatus(error);
+    return res.status(status).json({
+      ok: false,
+      error: extractOpenAiErrorMessage(error, 'Failed to delete video.'),
+    });
+  }
+});
+
+app.get('/api/integrations/openai/videos/:videoId/content', requireAuth, async (req, res) => {
+  if (!OPEN_API_KEY) {
+    return res.status(503).json({ ok: false, error: 'OpenAI integration is not configured.' });
+  }
+
+  const validation = downloadVariantSchema.safeParse({
+    variant: Array.isArray(req.query.variant) ? req.query.variant[0] : req.query.variant,
+  });
+
+  if (!validation.success) {
+    const issue = validation.error.issues[0];
+    return res.status(400).json({ ok: false, error: issue?.message || 'Invalid query parameters.' });
+  }
+
+  try {
+    const result = await downloadVideoContent({
+      apiKey: OPEN_API_KEY,
+      videoId: req.params.videoId,
+      variant: validation.data.variant,
+    });
+
+    if (result.headers['content-type']) {
+      res.setHeader('Content-Type', result.headers['content-type']);
+    }
+    if (result.headers['content-disposition']) {
+      res.setHeader('Content-Disposition', result.headers['content-disposition']);
+    }
+    res.setHeader('Content-Length', String(result.buffer.length));
+
+    return res.status(result.status).send(result.buffer);
+  } catch (error) {
+    console.error('[ERROR] GET /api/integrations/openai/videos/:videoId/content', error);
+    const status = normaliseErrorStatus(error);
+    return res.status(status).json({
+      ok: false,
+      error: extractOpenAiErrorMessage(error, 'Failed to download video content.'),
+    });
+  }
+});
+
+app.post('/api/integrations/openai/images/generations', requireAuth, async (req, res) => {
+  if (!OPEN_API_KEY) {
+    return res.status(503).json({ ok: false, error: 'OpenAI integration is not configured.' });
+  }
+
+  const validation = imageGenerationSchema.safeParse(req.body || {});
+  if (!validation.success) {
+    const issue = validation.error.issues[0];
+    return res.status(400).json({ ok: false, error: issue?.message || 'Invalid payload.' });
+  }
+
+  try {
+    const payload = toSnakeCasePayload(validation.data);
+    const response = await createImageGeneration({
+      apiKey: OPEN_API_KEY,
+      payload,
+    });
+
+    return res.json({ ok: true, data: response });
+  } catch (error) {
+    console.error('[ERROR] /api/integrations/openai/images/generations', error);
+    const status = normaliseErrorStatus(error);
+    return res.status(status).json({
+      ok: false,
+      error: extractOpenAiErrorMessage(error, 'Failed to generate image.'),
+    });
+  }
+});
+
+app.post(
+  '/api/integrations/openai/images/edits',
+  requireAuth,
+  upload.fields([
+    { name: 'image', maxCount: 16 },
+    { name: 'mask', maxCount: 1 },
+  ]),
+  async (req, res) => {
+    if (!OPEN_API_KEY) {
+      return res.status(503).json({ ok: false, error: 'OpenAI integration is not configured.' });
+    }
+
+    const validation = imageEditOptionsSchema.safeParse(req.body || {});
+    if (!validation.success) {
+      const issue = validation.error.issues[0];
+      return res.status(400).json({ ok: false, error: issue?.message || 'Invalid payload.' });
+    }
+
+    const imageFiles = Array.isArray(req.files?.image) ? req.files.image.map(normaliseMulterFile) : [];
+    if (!imageFiles || imageFiles.length === 0) {
+      return res.status(400).json({ ok: false, error: 'At least one image file is required.' });
+    }
+
+    try {
+      const response = await createImageEdit({
+        apiKey: OPEN_API_KEY,
+        images: imageFiles,
+        mask: normaliseMulterFile(Array.isArray(req.files?.mask) ? req.files.mask[0] : null),
+        options: toSnakeCasePayload(validation.data),
+      });
+
+      return res.json({ ok: true, data: response });
+    } catch (error) {
+      console.error('[ERROR] /api/integrations/openai/images/edits', error);
+      const status = normaliseErrorStatus(error);
+      return res.status(status).json({
+        ok: false,
+        error: extractOpenAiErrorMessage(error, 'Failed to edit image.'),
+      });
+    }
+  }
+);
+
+app.post(
+  '/api/integrations/openai/images/variations',
+  requireAuth,
+  upload.single('image'),
+  async (req, res) => {
+    if (!OPEN_API_KEY) {
+      return res.status(503).json({ ok: false, error: 'OpenAI integration is not configured.' });
+    }
+
+    const validation = imageVariationOptionsSchema.safeParse(req.body || {});
+    if (!validation.success) {
+      const issue = validation.error.issues[0];
+      return res.status(400).json({ ok: false, error: issue?.message || 'Invalid payload.' });
+    }
+
+    const imageFile = normaliseMulterFile(req.file);
+    if (!imageFile) {
+      return res.status(400).json({ ok: false, error: 'An image file is required.' });
+    }
+
+    try {
+      const response = await createImageVariation({
+        apiKey: OPEN_API_KEY,
+        image: imageFile,
+        options: toSnakeCasePayload(validation.data),
+      });
+
+      return res.json({ ok: true, data: response });
+    } catch (error) {
+      console.error('[ERROR] /api/integrations/openai/images/variations', error);
+      const status = normaliseErrorStatus(error);
+      return res.status(status).json({
+        ok: false,
+        error: extractOpenAiErrorMessage(error, 'Failed to create image variation.'),
+      });
+    }
+  }
+);
 
 // Serve static files (your HTML/CSS/JS)
 // Keep this after API route definitions so POST/PUT/etc. requests reach handlers instead of

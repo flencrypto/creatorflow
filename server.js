@@ -33,6 +33,45 @@ const FACEBOOK_CALLBACK_URL =
 const configuredAuthProviders = [];
 
 const OPEN_API_KEY = process.env.OPEN_API_KEY || process.env.AI_API_KEY || process.env.OPEN_AI_KEY;
+const connectorsCatalog = [
+  {
+    id: 'openai-content-generator',
+    provider: 'openai',
+    name: 'OpenAI Content Generator',
+    category: 'AI Automation',
+    description:
+      'Generate multi-channel social content with GPT-4o templates tuned for CreatorFlow prompts.',
+    features: [
+      'Post, script, and caption generation',
+      'Tone-aware creativity controls',
+      'Platform-aware formatting',
+    ],
+    documentationUrl: 'https://platform.openai.com/docs/guides/text-generation',
+    actions: { testable: true, models: true, suggestions: true },
+    requires: ['OPEN_API_KEY'],
+  },
+  {
+    id: 'openai-performance-coach',
+    provider: 'openai',
+    name: 'OpenAI Performance Coach',
+    category: 'AI Insights',
+    description:
+      'Review draft content and produce structured feedback for hooks, CTAs, and optimization tips.',
+    features: [
+      'Content critique and scoring',
+      'Goal-aligned suggestions',
+      'Actionable hook/CTA library',
+    ],
+    documentationUrl: 'https://platform.openai.com/docs/guides/assistant',
+    actions: { testable: true, suggestions: true },
+    requires: ['OPEN_API_KEY'],
+  },
+];
+
+const openAiModelCache = {
+  expiresAt: 0,
+  value: null,
+};
 if (!OPEN_API_KEY) {
   console.warn(
     '[WARN] OPEN_API_KEY not set. /api/generate will return 500 until you configure it.'
@@ -216,6 +255,44 @@ function requireAuth(req, res, next) {
   return res.status(401).json({ ok: false, error: 'Authentication required.' });
 }
 
+function buildIntegrationCatalogResponse() {
+  const openAiConfigured = Boolean(OPEN_API_KEY);
+
+  return connectorsCatalog.map((connector) => {
+    const connected = connector.provider === 'openai' ? openAiConfigured : false;
+    const status = connected ? 'connected' : 'requires_configuration';
+    const statusMessage = connected
+      ? 'Active via server-side OpenAI credential.'
+      : 'Add OPEN_API_KEY to enable this connector.';
+
+    return {
+      ...connector,
+      connected,
+      status,
+      statusMessage,
+    };
+  });
+}
+
+function safeParseJsonPayload(text) {
+  if (typeof text !== 'string') {
+    return null;
+  }
+
+  const normalised = text
+    .trim()
+    .replace(/^```json\s*/i, '')
+    .replace(/```$/i, '')
+    .trim();
+
+  try {
+    return JSON.parse(normalised);
+  } catch (error) {
+    console.warn('[WARN] Failed to parse JSON payload from AI response.', error);
+    return null;
+  }
+}
+
 // Basic input validation helper
 function validateGenerateBody(body) {
   const { template, input, platform, tone } = body || {};
@@ -355,10 +432,16 @@ function createTimeoutSignal(timeoutMs = 8000) {
   };
 }
 
-async function callAiProvider(prompt) {
+async function callAiProvider(prompt, options = {}) {
   if (!OPEN_API_KEY) {
     throw new Error('OPEN_API_KEY not configured on server.');
   }
+
+  const {
+    temperature = 0.7,
+    maxTokens = 400,
+    responseFormat = null,
+  } = options;
 
   const { signal, dispose } = createTimeoutSignal();
 
@@ -376,8 +459,13 @@ async function callAiProvider(prompt) {
           { role: 'system', content: 'You are a helpful content generation assistant.' },
           { role: 'user', content: prompt },
         ],
-        temperature: 0.7,
-        max_tokens: 400,
+        temperature,
+        max_tokens: maxTokens,
+        ...(responseFormat
+          ? {
+              response_format: { type: responseFormat },
+            }
+          : {}),
       }),
       signal,
     });
@@ -396,6 +484,131 @@ async function callAiProvider(prompt) {
     return content;
   } finally {
     dispose();
+  }
+}
+
+function validateConnectorSuggestionBody(body) {
+  const { useCase, audience, channels, tone } = body || {};
+
+  if (typeof useCase !== 'string' || useCase.trim().length === 0) {
+    return 'useCase is required.';
+  }
+
+  if (useCase.length > 600) {
+    return 'useCase is too long (max 600 characters).';
+  }
+
+  if (audience && typeof audience !== 'string') {
+    return 'audience must be a string if provided.';
+  }
+
+  if (audience && audience.length > 200) {
+    return 'audience is too long (max 200 characters).';
+  }
+
+  if (channels && !Array.isArray(channels)) {
+    return 'channels must be an array of strings if provided.';
+  }
+
+  if (Array.isArray(channels)) {
+    const invalidChannel = channels.find((channel) => typeof channel !== 'string' || channel.length > 40);
+    if (invalidChannel) {
+      return 'channels must contain short string values (<= 40 chars).';
+    }
+  }
+
+  if (tone && typeof tone !== 'string') {
+    return 'tone must be a string if provided.';
+  }
+
+  return null;
+}
+
+function buildConnectorSuggestionPrompt({ useCase, audience, channels, tone }) {
+  const audienceText = audience
+    ? `Target audience: ${audience}.`
+    : 'Target audience: modern creator economy teams.';
+  const channelsText = Array.isArray(channels) && channels.length > 0
+    ? `Priority channels: ${channels.join(', ')}.`
+    : 'Priority channels: Instagram, TikTok, YouTube, LinkedIn.';
+  const toneText = tone
+    ? `Preferred collaboration tone: ${tone}.`
+    : 'Preferred collaboration tone: proactive and friendly.';
+
+  return `You are an integration architect for a content operations platform.
+${audienceText}
+${channelsText}
+${toneText}
+Use case background: ${useCase}.
+
+Design 3 purpose-built OpenAI connector workflows that help automate the use case.
+Return a strict JSON object with the shape:
+{
+  "summary": string,
+  "connectors": [
+    {
+      "name": string,
+      "description": string,
+      "setup": string[],
+      "automations": string[]
+    }
+  ]
+}
+Use double quotes, no trailing comments, no markdown, and make descriptions focused on measurable impact.`;
+}
+
+async function fetchOpenAiModels() {
+  if (!OPEN_API_KEY) {
+    throw new Error('OPEN_API_KEY not configured on server.');
+  }
+
+  const now = Date.now();
+  if (openAiModelCache.value && openAiModelCache.expiresAt > now) {
+    return openAiModelCache.value;
+  }
+
+  const { signal, dispose } = createTimeoutSignal(6000);
+
+  try {
+    const response = await fetch('https://api.openai.com/v1/models?limit=50', {
+      headers: {
+        Authorization: `Bearer ${OPEN_API_KEY}`,
+      },
+      signal,
+    });
+
+    if (!response.ok) {
+      const text = await response.text().catch(() => '');
+      throw new Error(`Failed to load models: ${response.status} - ${text}`);
+    }
+
+    const payload = await response.json();
+    const models = Array.isArray(payload?.data)
+      ? payload.data
+          .filter((model) => typeof model?.id === 'string')
+          .map((model) => ({
+            id: model.id,
+            created: model.created || null,
+            ownedBy: model.owned_by || null,
+          }))
+      : [];
+
+    openAiModelCache.value = models;
+    openAiModelCache.expiresAt = Date.now() + 1000 * 60 * 5; // 5 minutes cache
+
+    return models;
+  } finally {
+    dispose();
+  }
+}
+
+async function sendOpenAiTestResponse(res) {
+  try {
+    await performOpenAiHealthCheck();
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('[ERROR] OpenAI integration test failed', err);
+    res.status(500).json({ ok: false, error: err.message || 'OpenAI integration test failed.' });
   }
 }
 
@@ -485,6 +698,22 @@ app.post('/api/content/analysis', requireAuth, async (req, res) => {
   }
 });
 
+app.get('/api/integrations', (_req, res) => {
+  const connectors = buildIntegrationCatalogResponse();
+
+  res.json({
+    ok: true,
+    connectors,
+    meta: {
+      openai: {
+        configured: Boolean(OPEN_API_KEY),
+        cachedModels: Array.isArray(openAiModelCache.value) ? openAiModelCache.value.length : 0,
+        cacheExpiresAt: openAiModelCache.expiresAt || null,
+      },
+    },
+  });
+});
+
 app.get('/api/integrations/openai/status', (_req, res) => {
   res.json({
     ok: true,
@@ -493,14 +722,68 @@ app.get('/api/integrations/openai/status', (_req, res) => {
   });
 });
 
-app.post('/api/integrations/openai/test', async (_req, res) => {
-  try {
-    await performOpenAiHealthCheck();
-    res.json({ ok: true });
-  } catch (err) {
-    console.error('[ERROR] /api/integrations/openai/test', err);
-    res.status(500).json({ ok: false, error: err.message || 'OpenAI integration test failed.' });
+app.get('/api/integrations/openai/models', async (_req, res) => {
+  if (!OPEN_API_KEY) {
+    return res.status(503).json({ ok: false, error: 'OpenAI integration is not configured.' });
   }
+
+  try {
+    const models = await fetchOpenAiModels();
+    res.json({ ok: true, models });
+  } catch (err) {
+    console.error('[ERROR] /api/integrations/openai/models', err);
+    res.status(500).json({ ok: false, error: err.message || 'Failed to load models.' });
+  }
+});
+
+app.post('/api/integrations/openai/connectors', async (req, res) => {
+  const validationError = validateConnectorSuggestionBody(req.body);
+  if (validationError) {
+    return res.status(400).json({ ok: false, error: validationError });
+  }
+
+  if (!OPEN_API_KEY) {
+    return res.status(503).json({ ok: false, error: 'OpenAI integration is not configured.' });
+  }
+
+  try {
+    const prompt = buildConnectorSuggestionPrompt(req.body);
+    const aiContent = await callAiProvider(prompt, {
+      temperature: 0.4,
+      maxTokens: 650,
+      responseFormat: 'json_object',
+    });
+
+    const parsed = safeParseJsonPayload(aiContent);
+    if (parsed && Array.isArray(parsed.connectors)) {
+      return res.json({ ok: true, summary: parsed.summary || null, connectors: parsed.connectors });
+    }
+
+    return res.json({ ok: true, summary: null, connectors: [], raw: aiContent });
+  } catch (err) {
+    console.error('[ERROR] /api/integrations/openai/connectors', err);
+    res.status(500).json({ ok: false, error: err.message || 'Failed to generate connector plan.' });
+  }
+});
+
+app.post('/api/integrations/:id/test', async (req, res) => {
+  if (req.params.id !== 'openai') {
+    return res.status(404).json({ ok: false, error: 'Unknown integration id.' });
+  }
+
+  if (!OPEN_API_KEY) {
+    return res.status(503).json({ ok: false, error: 'OpenAI integration is not configured.' });
+  }
+
+  await sendOpenAiTestResponse(res);
+});
+
+app.post('/api/integrations/openai/test', async (_req, res) => {
+  if (!OPEN_API_KEY) {
+    return res.status(503).json({ ok: false, error: 'OpenAI integration is not configured.' });
+  }
+
+  await sendOpenAiTestResponse(res);
 });
 
 app.listen(PORT, () => {

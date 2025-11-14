@@ -120,3 +120,73 @@ test('parses output_text field from responses payload', async () => {
   assert.equal(result, 'Trimmed response text');
   assert.equal(fetchMock.mock.callCount(), 2);
 });
+
+test('handles structured output_json segments from chat completions', async () => {
+  const fetchMock = mock.fn(async (url) => {
+    if (!url.includes('/chat/completions')) {
+      throw new Error(`Unexpected URL ${url}`);
+    }
+
+    return buildResponse({
+      choices: [
+        {
+          message: {
+            content: [
+              {
+                type: 'output_json',
+                json: { connectors: [{ name: 'Example', setup: [] }] },
+              },
+            ],
+          },
+        },
+      ],
+    });
+  });
+
+  const result = await generateContentWithFallback({
+    apiKey: 'test-key',
+    prompt: 'prompt',
+    fetch: fetchMock,
+    logger: { warn: () => {} },
+    responseFormat: 'json_object',
+  });
+
+  assert.equal(result, '{"connectors":[{"name":"Example","setup":[]}]}');
+  assert.equal(fetchMock.mock.callCount(), 1);
+});
+
+test('handles structured output_json segments from responses fallback', async () => {
+  const fetchMock = mock.fn(async (url) => {
+    if (url.includes('/chat/completions')) {
+      return buildResponse({ error: { message: 'Use Responses API' } }, { status: 400 });
+    }
+
+    if (!url.includes('/responses')) {
+      throw new Error(`Unexpected URL ${url}`);
+    }
+
+    return buildResponse({
+      output: [
+        {
+          content: [
+            {
+              type: 'output_json',
+              json: { connectors: [{ name: 'Fallback', automations: [] }] },
+            },
+          ],
+        },
+      ],
+    });
+  });
+
+  const result = await generateContentWithFallback({
+    apiKey: 'test-key',
+    prompt: 'prompt',
+    fetch: fetchMock,
+    logger: { warn: () => {} },
+    responseFormat: 'json_object',
+  });
+
+  assert.equal(result, '{"connectors":[{"name":"Fallback","automations":[]}]}');
+  assert.equal(fetchMock.mock.callCount(), 2);
+});

@@ -27,6 +27,8 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 const NODE_ENV = process.env.NODE_ENV || 'development';
+const isProduction = NODE_ENV === 'production';
+const DEVELOPMENT_SESSION_SECRET = 'development-session-secret';
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -35,8 +37,14 @@ const upload = multer({
   },
 });
 
-const SESSION_SECRET = process.env.SESSION_SECRET;
-if (!SESSION_SECRET) {
+const SESSION_SECRET =
+  process.env.SESSION_SECRET ?? (!isProduction ? DEVELOPMENT_SESSION_SECRET : undefined);
+
+if (!process.env.SESSION_SECRET) {
+  if (isProduction) {
+    throw new Error('SESSION_SECRET environment variable must be set in production.');
+  }
+
   console.warn(
     '[WARN] SESSION_SECRET not set. Falling back to an insecure default for local development. Configure SESSION_SECRET in production.'
   );
@@ -141,7 +149,7 @@ app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: false }));
 app.use(
   session({
-    secret: SESSION_SECRET || 'development-session-secret',
+    secret: SESSION_SECRET,
     resave: false,
     saveUninitialized: false,
     cookie: {
@@ -1245,6 +1253,11 @@ app.use(
   })
 ); // serves index.html, assets, etc. from project root
 
-app.listen(PORT, () => {
-  console.log(`Server listening on http://localhost:${PORT}`);
-});
+if (NODE_ENV !== 'test') {
+  app.listen(PORT, () => {
+    console.log(`Server listening on http://localhost:${PORT}`);
+  });
+}
+
+export const sessionSecret = SESSION_SECRET;
+export default app;

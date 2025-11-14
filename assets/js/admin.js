@@ -16,7 +16,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (data?.configured) {
                 updateApiStatus('configured', 'Server-side key detected.');
                 if (apiConfigSource) {
-                    apiConfigSource.textContent = 'Environment variable OPEN_API_KEY';
+                    apiConfigSource.textContent = 'Environment variable OPEN_API_KEY or OPEN_AI_KEY secret';
                 }
             } else {
                 updateApiStatus('not_configured', 'No API key configured on the server.');

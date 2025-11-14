@@ -65,7 +65,7 @@ document.addEventListener('DOMContentLoaded', () => {
         connectorsGrid.innerHTML = '';
 
         if (!connectors.length) {
-            showEmptyState('No integrations available yet. Configure OPEN_API_KEY to unlock OpenAI connectors.');
+            showEmptyState('No integrations available yet. Configure OPEN_API_KEY or the OPEN_AI_KEY secret to unlock OpenAI connectors.');
             return;
         }
 
@@ -183,7 +183,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (statusText) {
             statusText.textContent = meta.configured
                 ? 'OpenAI key detected. Creators can use AI templates and performance coaching.'
-                : 'Add OPEN_API_KEY to your environment variables to enable OpenAI-powered features.';
+                : 'Add OPEN_API_KEY (or configure the OPEN_AI_KEY secret) to your environment variables to enable OpenAI-powered features.';
         }
 
         if (cacheDetails) {

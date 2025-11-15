@@ -5,6 +5,7 @@ import cors from 'cors';
 import session from 'express-session';
 import passport from 'passport';
 import multer from 'multer';
+import crypto from 'node:crypto';
 import { z } from 'zod';
 import { Strategy as GoogleStrategy } from 'passport-google-oauth20';
 import { Strategy as FacebookStrategy } from 'passport-facebook';
@@ -54,6 +55,92 @@ const FACEBOOK_CALLBACK_URL =
   process.env.FACEBOOK_CALLBACK_URL || 'http://localhost:3000/auth/facebook/callback';
 
 const configuredAuthProviders = [];
+
+const OAUTH_STATE_SESSION_KEY = 'oauthState';
+
+function ensureOAuthStateStore(req) {
+  if (!req.session) {
+    return null;
+  }
+
+  const existingStore = req.session[OAUTH_STATE_SESSION_KEY];
+  if (!existingStore || typeof existingStore !== 'object') {
+    req.session[OAUTH_STATE_SESSION_KEY] = {};
+  }
+
+  return req.session[OAUTH_STATE_SESSION_KEY];
+}
+
+function issueOAuthStateToken(req, provider) {
+  const store = ensureOAuthStateStore(req);
+  if (!store) {
+    return null;
+  }
+
+  const token = crypto.randomUUID();
+  store[provider] = token;
+  return token;
+}
+
+function consumeOAuthStateToken(req, provider) {
+  const store = req.session?.[OAUTH_STATE_SESSION_KEY];
+  if (!store || typeof store !== 'object') {
+    return null;
+  }
+
+  const token = typeof store[provider] === 'string' ? store[provider] : null;
+  delete store[provider];
+
+  if (Object.keys(store).length === 0) {
+    delete req.session[OAUTH_STATE_SESSION_KEY];
+  }
+
+  return token;
+}
+
+function normaliseStateValue(value) {
+  if (Array.isArray(value)) {
+    return value[0];
+  }
+  return value;
+}
+
+function createOAuthInitiationHandler(provider, options) {
+  return (req, res, next) => {
+    if (!req.session) {
+      console.error(
+        `[ERROR] Session unavailable for ${provider} OAuth start; refusing to continue without CSRF protection.`
+      );
+      res.status(500).send('Session support is required to initiate OAuth.');
+      return;
+    }
+
+    const token = issueOAuthStateToken(req, provider);
+    if (!token) {
+      res.status(500).send('Failed to create OAuth state token.');
+      return;
+    }
+
+    return passport.authenticate(provider, { ...options, state: token })(req, res, next);
+  };
+}
+
+function createOAuthStateGuard(provider, failureRedirect) {
+  return (req, res, next) => {
+    if (!req.session) {
+      return res.redirect(failureRedirect);
+    }
+
+    const expectedState = consumeOAuthStateToken(req, provider);
+    const incomingState = normaliseStateValue(req.query?.state);
+
+    if (!expectedState || typeof incomingState !== 'string' || expectedState !== incomingState) {
+      return res.redirect(failureRedirect);
+    }
+
+    return next();
+  };
+}
 
 const resolvedOpenApiKey =
   process.env.OPEN_API_KEY ?? process.env.OPEN_AI_KEY ?? process.env.AI_API_KEY ?? null;
@@ -182,7 +269,7 @@ if (GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET) {
 
   app.get(
     '/auth/google',
-    passport.authenticate('google', {
+    createOAuthInitiationHandler('google', {
       scope: ['profile', 'email'],
       prompt: 'select_account',
     })
@@ -190,6 +277,7 @@ if (GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET) {
 
   app.get(
     '/auth/google/callback',
+    createOAuthStateGuard('google', '/login.html?error=google'),
     passport.authenticate('google', {
       failureRedirect: '/login.html?error=google',
       failureMessage: true,
@@ -222,13 +310,14 @@ if (FACEBOOK_APP_ID && FACEBOOK_APP_SECRET) {
 
   app.get(
     '/auth/facebook',
-    passport.authenticate('facebook', {
+    createOAuthInitiationHandler('facebook', {
       scope: ['email'],
     })
   );
 
   app.get(
     '/auth/facebook/callback',
+    createOAuthStateGuard('facebook', '/login.html?error=facebook'),
     passport.authenticate('facebook', {
       failureRedirect: '/login.html?error=facebook',
       failureMessage: true,
@@ -1190,6 +1279,11 @@ app.use(
   })
 ); // serves index.html, assets, etc. from project root
 
-app.listen(PORT, () => {
-  console.log(`Server listening on http://localhost:${PORT}`);
-});
+const isTestEnvironment = process.env.NODE_ENV === 'test';
+const httpServer = isTestEnvironment
+  ? null
+  : app.listen(PORT, () => {
+      console.log(`Server listening on http://localhost:${PORT}`);
+    });
+
+export { app, httpServer };

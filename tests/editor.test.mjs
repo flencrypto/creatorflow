@@ -99,6 +99,12 @@ describe('editor module', () => {
                 });
             }
 
+            assert.strictEqual(
+                preview.textContent,
+                'Generating content...',
+                'Preview should show loading state before fetch resolves.',
+            );
+
             return new Response(
                 JSON.stringify({ ok: true, content: 'Generated content example.' }),
                 {
@@ -129,6 +135,12 @@ describe('editor module', () => {
 
         assert.ok(documentListeners.DOMContentLoaded, 'DOMContentLoaded listener registered');
         await documentListeners.DOMContentLoaded();
+
+        assert.strictEqual(
+            typeof generateBtn._listeners.click,
+            'function',
+            'Generate button should register a click handler on DOMContentLoaded.',
+        );
 
         input.value = 'Launch announcement';
         template.value = 'default-template';

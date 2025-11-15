@@ -1,3 +1,5 @@
+import { createApiClient } from './api-client.js';
+
 document.addEventListener('DOMContentLoaded', () => {
     const generateBtn = document.getElementById('generate-btn');
     const exportBtn = document.getElementById('export-btn');
@@ -11,6 +13,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const MAX_HISTORY_ITEMS = 50;
     const historyItems = [];
+    const apiClient = createApiClient();
 
     async function handleGenerate() {
         const userInput = input.value.trim();
@@ -28,7 +31,7 @@ document.addEventListener('DOMContentLoaded', () => {
         generateBtn.disabled = true;
 
         try {
-            const response = await fetch('/api/generate', {
+            const response = await apiClient.fetch('/api/generate', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -40,17 +43,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     tone,
                 }),
             });
-
-            if (!response.ok) {
-                const errorData = await response.json().catch(() => ({}));
-                const msg =
-                    errorData?.error ||
-                    `Generation failed with status ${response.status}.`;
-                preview.textContent = msg;
-                alert(msg);
-                return;
-            }
-
             const data = await response.json();
             if (!data.ok) {
                 const msg = data.error || 'Generation failed.';
@@ -76,8 +68,13 @@ document.addEventListener('DOMContentLoaded', () => {
             renderHistory();
         } catch (err) {
             console.error('Error calling /api/generate', err);
-            preview.textContent = 'Unexpected error during generation.';
-            alert('Unexpected error during generation. Check console for details.');
+            const fallbackMessage = 'Unexpected error during generation.';
+            const message =
+                typeof err?.message === 'string' && err.message.trim()
+                    ? err.message
+                    : fallbackMessage;
+            preview.textContent = message;
+            alert(message);
         } finally {
             generateBtn.disabled = false;
         }

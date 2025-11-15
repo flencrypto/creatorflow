@@ -311,23 +311,105 @@ function buildIntegrationCatalogResponse() {
   });
 }
 
+function extractBalancedJsonFragment(source, startIndex) {
+  if (startIndex < 0 || startIndex >= source.length) {
+    return null;
+  }
+
+  const openingChar = source[startIndex];
+  const closingChar = openingChar === '{' ? '}' : openingChar === '[' ? ']' : null;
+
+  if (!closingChar) {
+    return null;
+  }
+
+  let depth = 0;
+  let inString = false;
+  let isEscaped = false;
+
+  for (let index = startIndex; index < source.length; index += 1) {
+    const char = source[index];
+
+    if (inString) {
+      if (isEscaped) {
+        isEscaped = false;
+      } else if (char === '\\') {
+        isEscaped = true;
+      } else if (char === '"') {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (char === '"') {
+      inString = true;
+      continue;
+    }
+
+    if (char === openingChar) {
+      depth += 1;
+    } else if (char === closingChar) {
+      depth -= 1;
+      if (depth === 0) {
+        return source.slice(startIndex, index + 1);
+      }
+    }
+  }
+
+  return source.slice(startIndex);
+}
+
 function safeParseJsonPayload(text) {
   if (typeof text !== 'string') {
     return null;
   }
 
-  const normalised = text
-    .trim()
-    .replace(/^```json\s*/i, '')
-    .replace(/```$/i, '')
-    .trim();
-
-  try {
-    return JSON.parse(normalised);
-  } catch (error) {
-    console.warn('[WARN] Failed to parse JSON payload from AI response.', error);
+  const trimmed = text.trim();
+  if (!trimmed) {
     return null;
   }
+
+  const candidates = new Set();
+
+  const fencedMatch = trimmed.match(/```(?:json)?\s*([\S\s]*?)\s*```/i);
+  if (fencedMatch && typeof fencedMatch[1] === 'string') {
+    candidates.add(fencedMatch[1].trim());
+  }
+
+  candidates.add(trimmed);
+
+  const startIndex = trimmed.search(/[[{]/);
+  if (startIndex >= 0) {
+    const fromFirstBracket = trimmed.slice(startIndex).trim();
+    if (fromFirstBracket) {
+      candidates.add(fromFirstBracket);
+    }
+
+    const balanced = extractBalancedJsonFragment(trimmed, startIndex);
+    if (balanced) {
+      candidates.add(balanced.trim());
+    }
+  }
+
+  let lastError = null;
+
+  for (const candidate of candidates) {
+    if (!candidate) {
+      continue;
+    }
+
+    try {
+      return JSON.parse(candidate);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  if (lastError) {
+    console.warn('[WARN] Failed to parse JSON payload from AI response.', lastError);
+  }
+
+  return null;
 }
 
 const createVideoSchema = z.object({

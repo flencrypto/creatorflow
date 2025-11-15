@@ -28,6 +28,8 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 const NODE_ENV = process.env.NODE_ENV || 'development';
+const isProduction = NODE_ENV === 'production';
+const DEVELOPMENT_SESSION_SECRET = 'development-session-secret';
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -36,8 +38,14 @@ const upload = multer({
   },
 });
 
-const SESSION_SECRET = process.env.SESSION_SECRET;
-if (!SESSION_SECRET) {
+const SESSION_SECRET =
+  process.env.SESSION_SECRET ?? (!isProduction ? DEVELOPMENT_SESSION_SECRET : undefined);
+
+if (!process.env.SESSION_SECRET) {
+  if (isProduction) {
+    throw new Error('SESSION_SECRET environment variable must be set in production.');
+  }
+
   console.warn(
     '[WARN] SESSION_SECRET not set. Falling back to an insecure default for local development. Configure SESSION_SECRET in production.'
   );
@@ -56,11 +64,23 @@ const FACEBOOK_CALLBACK_URL =
 const configuredAuthProviders = [];
 
 const resolvedOpenApiKey =
-  process.env.OPEN_API_KEY ?? process.env.OPEN_AI_KEY ?? process.env.AI_API_KEY ?? null;
+  process.env.OPEN_API_KEY?.trim() ??
+  process.env.OPEN_AI_KEY?.trim() ??
+  process.env.AI_API_KEY?.trim() ??
+  null;
 
-if (!process.env.OPEN_API_KEY && process.env.OPEN_AI_KEY) {
-  process.env.OPEN_API_KEY = process.env.OPEN_AI_KEY;
-}
+const openAiKeySource = (() => {
+  if (process.env.OPEN_API_KEY?.trim()) {
+    return 'OPEN_API_KEY';
+  }
+  if (process.env.OPEN_AI_KEY?.trim()) {
+    return 'OPEN_AI_KEY';
+  }
+  if (process.env.AI_API_KEY?.trim()) {
+    return 'AI_API_KEY';
+  }
+  return null;
+})();
 
 const OPEN_API_KEY = resolvedOpenApiKey;
 const connectorsCatalog = [
@@ -105,9 +125,9 @@ if (!OPEN_API_KEY) {
   console.warn(
     '[WARN] OPEN_API_KEY not set. /api/generate will return 500 until you configure it. Add OPEN_API_KEY (or the OPEN_AI_KEY repository secret) to resolve this.'
   );
-} else if (!process.env.OPEN_API_KEY && process.env.OPEN_AI_KEY) {
+} else if (openAiKeySource === 'OPEN_AI_KEY') {
   console.info('[INFO] Using OPEN_AI_KEY repository secret as OPEN_API_KEY.');
-} else if (!process.env.OPEN_API_KEY && process.env.AI_API_KEY) {
+} else if (openAiKeySource === 'AI_API_KEY') {
   console.warn('[WARN] Falling back to legacy AI_API_KEY environment variable.');
 }
 
@@ -129,7 +149,7 @@ app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: false }));
 app.use(
   session({
-    secret: SESSION_SECRET || 'development-session-secret',
+    secret: SESSION_SECRET,
     resave: false,
     saveUninitialized: false,
     cookie: {
@@ -1190,6 +1210,11 @@ app.use(
   })
 ); // serves index.html, assets, etc. from project root
 
-app.listen(PORT, () => {
-  console.log(`Server listening on http://localhost:${PORT}`);
-});
+if (NODE_ENV !== 'test') {
+  app.listen(PORT, () => {
+    console.log(`Server listening on http://localhost:${PORT}`);
+  });
+}
+
+export const sessionSecret = SESSION_SECRET;
+export default app;

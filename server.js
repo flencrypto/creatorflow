@@ -848,7 +848,7 @@ app.get('/api/integrations/openai/models', async (_req, res) => {
   }
 });
 
-app.post('/api/integrations/openai/connectors', async (req, res) => {
+app.post('/api/integrations/openai/connectors', requireAuth, async (req, res) => {
   const validationError = validateConnectorSuggestionBody(req.body);
   if (validationError) {
     return res.status(400).json({ ok: false, error: validationError });
@@ -878,7 +878,7 @@ app.post('/api/integrations/openai/connectors', async (req, res) => {
   }
 });
 
-app.post('/api/integrations/:id/test', async (req, res) => {
+app.post('/api/integrations/:id/test', requireAuth, async (req, res) => {
   if (req.params.id !== 'openai') {
     return res.status(404).json({ ok: false, error: 'Unknown integration id.' });
   }
@@ -890,7 +890,7 @@ app.post('/api/integrations/:id/test', async (req, res) => {
   await sendOpenAiTestResponse(res);
 });
 
-app.post('/api/integrations/openai/test', async (_req, res) => {
+app.post('/api/integrations/openai/test', requireAuth, async (_req, res) => {
   if (!OPEN_API_KEY) {
     return res.status(503).json({ ok: false, error: 'OpenAI integration is not configured.' });
   }

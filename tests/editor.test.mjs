@@ -130,7 +130,7 @@ describe('editor module', () => {
             },
         };
 
-        const moduleUrl = new URL('../assets/js/editor.js', import.meta.url);
+        const moduleUrl = new URL('../public/assets/js/editor.js', import.meta.url);
         await import(`${moduleUrl.href}?cacheBust=${Date.now()}`);
 
         assert.ok(documentListeners.DOMContentLoaded, 'DOMContentLoaded listener registered');

@@ -1,4 +1,8 @@
 // server.js
+import path from 'node:path';
+import crypto from 'node:crypto';
+import { fileURLToPath } from 'node:url';
+
 import express from 'express';
 import dotenv from 'dotenv';
 import cors from 'cors';
@@ -28,6 +32,11 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 const NODE_ENV = process.env.NODE_ENV || 'development';
+
+const moduleFilename = fileURLToPath(import.meta.url);
+const moduleDirectory = path.dirname(moduleFilename);
+const publicDirectory = path.join(moduleDirectory, 'public');
+const oauthStateSessionKey = 'oauthStates';
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -182,7 +191,7 @@ if (GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET) {
 
   app.get(
     '/auth/google',
-    passport.authenticate('google', {
+    issueOAuthStateAndAuthenticate('google', {
       scope: ['profile', 'email'],
       prompt: 'select_account',
     })
@@ -190,6 +199,7 @@ if (GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET) {
 
   app.get(
     '/auth/google/callback',
+    enforceValidOAuthState('google'),
     passport.authenticate('google', {
       failureRedirect: '/login.html?error=google',
       failureMessage: true,
@@ -222,13 +232,14 @@ if (FACEBOOK_APP_ID && FACEBOOK_APP_SECRET) {
 
   app.get(
     '/auth/facebook',
-    passport.authenticate('facebook', {
+    issueOAuthStateAndAuthenticate('facebook', {
       scope: ['email'],
     })
   );
 
   app.get(
     '/auth/facebook/callback',
+    enforceValidOAuthState('facebook'),
     passport.authenticate('facebook', {
       failureRedirect: '/login.html?error=facebook',
       failureMessage: true,
@@ -1185,11 +1196,112 @@ app.post(
 // Keep this after API route definitions so POST/PUT/etc. requests reach handlers instead of
 // returning 405 from the static middleware when assets are missing.
 app.use(
-  express.static('.', {
+  express.static(publicDirectory, {
     fallthrough: true,
+    dotfiles: 'ignore',
+    index: false,
   })
-); // serves index.html, assets, etc. from project root
+); // restrict static hosting to the dedicated public directory
 
-app.listen(PORT, () => {
-  console.log(`Server listening on http://localhost:${PORT}`);
+app.get('/', (_req, res) => {
+  res.sendFile(path.join(publicDirectory, 'index.html'));
 });
+
+if (NODE_ENV !== 'test') {
+  app.listen(PORT, () => {
+    console.log(`Server listening on http://localhost:${PORT}`);
+  });
+}
+
+function ensureSession(req) {
+  if (!req.session) {
+    throw new Error('Session support is required but was not initialised.');
+  }
+
+  return req.session;
+}
+
+function issueOAuthState(req, provider) {
+  const activeSession = ensureSession(req);
+  const state = crypto.randomUUID();
+
+  const stateStore = activeSession[oauthStateSessionKey] || {};
+  stateStore[provider] = state;
+  activeSession[oauthStateSessionKey] = stateStore;
+
+  return state;
+}
+
+function consumeOAuthState(req, provider, providedState) {
+  if (typeof providedState !== 'string' || providedState.length === 0) {
+    return false;
+  }
+
+  const activeSession = ensureSession(req);
+  const stateStore = activeSession[oauthStateSessionKey] || {};
+  const expected = stateStore?.[provider];
+  delete stateStore[provider];
+
+  if (Object.keys(stateStore).length === 0) {
+    delete activeSession[oauthStateSessionKey];
+  } else {
+    activeSession[oauthStateSessionKey] = stateStore;
+  }
+
+  if (typeof expected !== 'string' || expected.length === 0) {
+    return false;
+  }
+
+  try {
+    const expectedBuffer = Buffer.from(expected, 'utf8');
+    const providedBuffer = Buffer.from(providedState, 'utf8');
+
+    if (expectedBuffer.length !== providedBuffer.length) {
+      return false;
+    }
+
+    return crypto.timingSafeEqual(expectedBuffer, providedBuffer);
+  } catch (error) {
+    console.error('[ERROR] Failed to compare OAuth state tokens securely.', error);
+    return false;
+  }
+}
+
+function issueOAuthStateAndAuthenticate(provider, options) {
+  return (req, res, next) => {
+    try {
+      const state = issueOAuthState(req, provider);
+      return passport.authenticate(provider, {
+        ...options,
+        state,
+      })(req, res, next);
+    } catch (error) {
+      console.error(`[ERROR] Failed to initiate ${provider} OAuth flow`, error);
+      return res.status(500).json({
+        ok: false,
+        error: 'Authentication temporarily unavailable. Please try again.',
+      });
+    }
+  };
+}
+
+function enforceValidOAuthState(provider) {
+  return (req, res, next) => {
+    try {
+      const providedState = typeof req.query.state === 'string' ? req.query.state : null;
+      const isValidState = consumeOAuthState(req, provider, providedState);
+
+      if (!isValidState) {
+        console.warn(`[WARN] Rejected ${provider} OAuth callback due to invalid state.`);
+        return res.redirect(302, `/login.html?error=${provider}_oauth_state`);
+      }
+    } catch (error) {
+      console.error(`[ERROR] ${provider} OAuth state validation failed`, error);
+      return res.status(500).json({ ok: false, error: 'OAuth state validation failed.' });
+    }
+
+    return next();
+  };
+}
+
+export default app;

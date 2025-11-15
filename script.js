@@ -2,7 +2,7 @@
 // Global JavaScript for CreatorFlow Studio
 
 // Initialize app when DOM is loaded
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', () => {
     initializeApp();
 });
 
@@ -28,7 +28,7 @@ function showNotification(message, type = 'info') {
     };
 
     const notification = document.createElement('div');
-    notification.className = `${typeStyles[type] || typeStyles.info} text-white px-4 py-3 rounded-lg shadow-lg flex items-start gap-3`;
+    notification.className = `${typeStyles[type] ?? typeStyles.info} text-white px-4 py-3 rounded-lg shadow-lg flex items-start gap-3`;
     notification.setAttribute('role', type === 'error' ? 'alert' : 'status');
 
     const messageWrapper = document.createElement('span');
@@ -66,6 +66,7 @@ function adminLogout() {
         window.location.href = 'index.html';
     }, 1000);
 }
+
 function initializeApp() {
     // Add loading states to interactive elements
     addLoadingStates();
@@ -86,10 +87,21 @@ function initializeApp() {
 function addLoadingStates() {
     const buttons = document.querySelectorAll('button, a[href="#"]');
     buttons.forEach(button => {
-        button.addEventListener('click', function(e) {
-            if (this.hasAttribute('data-loading')) {
-                this.classList.add('opacity-75', 'cursor-not-allowed');
-                this.innerHTML = `<span class="loading-spinner inline-block mr-2"></span>Loading...`;
+        button.addEventListener('click', function (event) {
+            if (!this.hasAttribute('data-loading')) {
+                return;
+            }
+
+            if (!this.dataset.originalLabel) {
+                this.dataset.originalLabel = this.innerHTML;
+            }
+
+            this.classList.add('opacity-75', 'cursor-not-allowed');
+            this.setAttribute('aria-busy', 'true');
+            this.innerHTML = '<span class="loading-spinner inline-block mr-2" aria-hidden="true"></span>Loading...';
+
+            if (this.tagName === 'A') {
+                event.preventDefault();
             }
         });
     });
@@ -155,19 +167,19 @@ async function simulateContentGeneration(prompt, template) {
     return new Promise((resolve) => {
         setTimeout(() => {
             const mockResponses = {
-                'instagram': `🌟 ${prompt} ✨
+                instagram: `🌟 ${prompt} ✨
 
 Check out this amazing content! What do you think? Let me know in the comments! 👇
 
 #contentcreator #digitalmarketing #socialmedia`,
-                'youtube': `🎬 ${prompt}
+                youtube: `🎬 ${prompt}
 
 In today's video, we're diving deep into this fascinating topic. Make sure to like and subscribe for more content like this! 🔔`,
-                'tiktok': `🔥 ${prompt} 
-                 
+                tiktok: `🔥 ${prompt}
+
 This trend is absolutely insane! 😱
 
-#trending #viral #fyp`
+#trending #viral #fyp`,
             };
             
             resolve(mockResponses[template] || `Generated content for: ${prompt}`);
@@ -190,27 +202,29 @@ async function copyToClipboard(text) {
 // Theme management
 function toggleTheme() {
     const html = document.documentElement;
-    if (html.classList.contains('dark')) {
-        html.classList.remove('dark');
-        localStorage.setItem('theme', 'light');
-    showNotification('Switched to light theme', 'info');
-    } else {
+    const shouldEnableDark = !html.classList.contains('dark');
+
+    if (shouldEnableDark) {
         html.classList.add('dark');
         localStorage.setItem('theme', 'dark');
         showNotification('Switched to dark theme', 'info');
+        return;
     }
+
+    html.classList.remove('dark');
+    localStorage.setItem('theme', 'light');
+    showNotification('Switched to light theme', 'info');
 }
 
 // Check for saved theme preference
 function loadTheme() {
     const theme = localStorage.getItem('theme');
-    if (theme === 'dark') {
-        document.documentElement.classList.add('dark');
-    }
+    document.documentElement.classList.toggle('dark', theme === 'dark');
 }
 
 // Initialize theme on load
 loadTheme();
+
 // Help search functionality
 function initHelpSearch() {
     const searchInput = document.querySelector('[data-role=\"help-search-input\"]');
@@ -274,5 +288,7 @@ window.CreatorFlow = {
     simulateContentGeneration,
     copyToClipboard,
     showNotification,
-    toggleTheme
+    toggleTheme,
+    adminLogout,
+    initializeApp,
 };

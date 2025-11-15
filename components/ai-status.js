@@ -1,15 +1,49 @@
+const STATUS_VARIANTS = {
+    connected: {
+        container: 'ai-status ai-status-connected',
+        dot: 'status-dot connected',
+    },
+    disconnected: {
+        container: 'ai-status ai-status-disconnected',
+        dot: 'status-dot disconnected',
+    },
+    disabled: {
+        container: 'ai-status ai-status-disabled',
+        dot: 'status-dot disabled',
+    },
+    checking: {
+        container: 'ai-status ai-status-disabled',
+        dot: 'status-dot disabled',
+    },
+};
+
 class AIStatus extends HTMLElement {
+    constructor() {
+        super();
+        this.handleStorageChange = this.handleStorageChange.bind(this);
+        this.abortController = null;
+    }
+
     connectedCallback() {
-        this.attachShadow({ mode: 'open' });
+        if (!this.shadowRoot) {
+            this.attachShadow({ mode: 'open' });
+        }
+
         this.render();
-        this.checkStatus();
-        
-        // Listen for API key changes
-        window.addEventListener('storage', (e) => {
-            if (e.key === 'openai_api_key') {
-                this.checkStatus();
-            }
+        this.setStatus('disabled', 'AI: Not Configured');
+        this.checkStatus().catch(() => {
+            // Errors are surfaced through setStatus; no-op here to avoid noisy console logs.
         });
+
+        window.addEventListener('storage', this.handleStorageChange);
+    }
+
+    disconnectedCallback() {
+        window.removeEventListener('storage', this.handleStorageChange);
+        if (this.abortController) {
+            this.abortController.abort();
+            this.abortController = null;
+        }
     }
 
     render() {
@@ -56,41 +90,81 @@ class AIStatus extends HTMLElement {
                     50% { opacity: 0.5; }
                 }
             </style>
-            <div class="ai-status ai-status-disabled" id="status-container">
-                <div class="status-dot disabled"></div>
+            <div class="ai-status ai-status-disabled" id="status-container" role="status" aria-live="polite">
+                <div class="status-dot disabled" aria-hidden="true"></div>
                 <span id="status-text">AI: Not Configured</span>
             </div>
         `;
     }
 
-    checkStatus() {
-        const apiKey = localStorage.getItem('openai_api_key');
-        const statusContainer = this.shadowRoot.getElementById('status-container');
-        const statusDot = statusContainer.querySelector('.status-dot');
-        const statusText = this.shadowRoot.getElementById('status-text');
+    setStatus(state, label) {
+        const container = this.shadowRoot.getElementById('status-container');
+        const dot = container?.querySelector('.status-dot');
+        const text = this.shadowRoot.getElementById('status-text');
+        const variant = STATUS_VARIANTS[state] ?? STATUS_VARIANTS.disabled;
 
+        if (container) {
+            container.className = variant.container;
+        }
+        if (dot) {
+            dot.className = variant.dot;
+        }
+        if (text) {
+            text.textContent = label;
+        }
+    }
+
+    async checkStatus() {
+        const apiKey = localStorage.getItem('openai_api_key');
         if (!apiKey) {
-            statusContainer.className = 'ai-status ai-status-disabled';
-            statusDot.className = 'status-dot disabled';
-            statusText.textContent = 'AI: Not Configured';
+            this.setStatus('disabled', 'AI: Not Configured');
             return;
         }
 
-        // Test the connection
-        fetch('https://api.openai.com/v1/models', {
-            headers: {
-                'Authorization': `Bearer ${apiKey}`
+        this.setStatus('checking', 'AI: Checking connection...');
+
+        if (this.abortController) {
+            this.abortController.abort();
+        }
+        const controller = new AbortController();
+        this.abortController = controller;
+
+        try {
+            const response = await fetch('https://api.openai.com/v1/models', {
+                headers: {
+                    Authorization: `Bearer ${apiKey}`,
+                },
+                signal: controller.signal,
+            });
+
+            if (controller.signal.aborted || this.abortController !== controller) {
+                return;
             }
-        }).then(response => {
+
             if (response.ok) {
-                statusContainer.className = 'ai-status ai-status-connected';
-            statusDot.className = 'status-dot connected';
-            statusText.textContent = 'AI: Connected';
-        }).catch(() => {
-            statusContainer.className = 'ai-status ai-status-disconnected';
-            statusDot.className = 'status-dot disconnected';
-            statusText.textContent = 'AI: Connection Failed';
-        });
+                this.setStatus('connected', 'AI: Connected');
+                return;
+            }
+
+            this.setStatus('disconnected', 'AI: Connection Failed');
+        } catch (error) {
+            if (controller.signal.aborted || this.abortController !== controller) {
+                return;
+            }
+            this.setStatus('disconnected', 'AI: Connection Failed');
+        } finally {
+            if (this.abortController === controller) {
+                this.abortController = null;
+            }
+        }
+    }
+
+    handleStorageChange(event) {
+        if (event.key === 'openai_api_key') {
+            this.checkStatus().catch(() => {
+                this.setStatus('disconnected', 'AI: Connection Failed');
+            });
+        }
     }
 }
 

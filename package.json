@@ -9,7 +9,7 @@
     "dev": "node server.js",
     "lint": "eslint server.js lib --ext .js",
     "typecheck": "tsc --noEmit",
-    "test": "node --test",
+    "test": "NODE_ENV=test SESSION_SECRET=test-session-secret GOOGLE_CLIENT_ID=test-google-client-id GOOGLE_CLIENT_SECRET=test-google-client-secret GOOGLE_CALLBACK_URL=http://localhost:3000/auth/google/callback FACEBOOK_APP_ID=test-facebook-app-id FACEBOOK_APP_SECRET=test-facebook-app-secret FACEBOOK_CALLBACK_URL=http://localhost:3000/auth/facebook/callback node --test",
     "build:static": "node scripts/sync-static.js"
   },
   "dependencies": {

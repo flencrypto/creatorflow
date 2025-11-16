@@ -34,7 +34,7 @@ global.fetch = async (url) => {
   throw new Error(`Unexpected fetch to ${url}`);
 };
 
-const app = (await import('../server.js')).default;
+const app = (await import('./helpers/app-fixture.js')).default;
 
 test('connector suggestions parse JSON code blocks with prefixes', async () => {
   const originalIsAuthenticated = app.request.isAuthenticated;

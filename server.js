@@ -1307,9 +1307,13 @@ function issueOAuthState(req, provider) {
   const activeSession = ensureSession(req);
   const state = crypto.randomUUID();
 
-  const stateStore = activeSession[oauthStateSessionKey] || {};
-  stateStore[provider] = state;
-  activeSession[oauthStateSessionKey] = stateStore;
+  const existingStates = activeSession[oauthStateSessionKey] || {};
+  const nextStateStore = {
+    ...existingStates,
+    [provider]: state,
+  };
+  // Reassign to trigger express-session change detection when resave=false.
+  activeSession[oauthStateSessionKey] = nextStateStore;
 
   return state;
 }

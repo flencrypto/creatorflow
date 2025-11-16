@@ -11,7 +11,7 @@ process.env.FACEBOOK_APP_ID = 'test-facebook-app-id';
 process.env.FACEBOOK_APP_SECRET = 'test-facebook-app-secret';
 process.env.FACEBOOK_CALLBACK_URL = 'http://localhost:3000/auth/facebook/callback';
 
-const app = (await import('../server.js')).default;
+const app = (await import('./helpers/app-fixture.js')).default;
 
 function assertAuthRequired(response) {
   assert.equal(response.status, 401);

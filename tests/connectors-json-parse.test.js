@@ -45,10 +45,15 @@ test('connector suggestions parse JSON code blocks with prefixes', async () => {
   app.request.user = { id: 'user-1', displayName: 'Test User' };
 
   const agent = request.agent(app);
+  const csrfResponse = await agent.get('/api/auth/csrf');
+  assert.equal(csrfResponse.status, 200);
+  const csrfToken = csrfResponse.body?.csrfToken;
+  assert.ok(csrfToken);
   const response = await agent
     .post('/api/integrations/openai/connectors')
     .send({ useCase: 'Automate content calendar' })
-    .set('Content-Type', 'application/json');
+    .set('Content-Type', 'application/json')
+    .set('x-csrf-token', csrfToken);
 
   assert.equal(response.status, 200);
   assert.deepEqual(response.body, {

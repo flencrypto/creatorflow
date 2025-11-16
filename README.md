@@ -56,3 +56,16 @@ npm run build:static
 ```
 
 This script copies the `public/` directory into `docs/`, which GitHub Pages can serve directly without needing the Node.js server. Commit the generated `docs/` folder whenever you update any static files.
+
+## Runtime API configuration for static hosts
+
+Static deployments (e.g. GitHub Pages, Hugging Face Spaces) cannot handle `/api/*` POST requests themselves, so the front-end now reads a configurable API base before loading any AI modules. The resolver checks overrides in the following order:
+
+1. `?apiBase=https://backend.example.com` (persists to `localStorage` once provided)
+2. Previously stored override in the same browser
+3. `<meta name="creatorflow:api-base" content="https://backend.example.com">`
+4. `data-api-base` attributes on `<html>` or `<body>`
+5. Existing `window.__API_BASE_URL`
+6. The current origin (default for local development)
+
+To host the UI on a static domain while using a remote backend, set the meta tag in `public/*.html` (and re-run `npm run build:static`) or append the query parameter once to persist the backend origin locally.

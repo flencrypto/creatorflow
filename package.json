@@ -9,7 +9,8 @@
     "dev": "node server.js",
     "lint": "eslint server.js lib --ext .js",
     "typecheck": "tsc --noEmit",
-    "test": "node --test"
+    "test": "node --test",
+    "build:static": "node scripts/sync-static.js"
   },
   "dependencies": {
     "cors": "2.8.5",

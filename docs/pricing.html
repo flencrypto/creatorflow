@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pricing - CreatorFlow Studio</title>
+    <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/feather-icons/dist/feather.min.js"></script>
+    <script src="https://unpkg.com/feather-icons"></script>
+    <script src="components/navbar.js"></script>
+    <script src="components/footer.js"></script>
+</head>
+<body class="bg-gradient-to-br from-indigo-50 to-purple-100 min-h-screen">
+    <custom-navbar></custom-navbar>
+    
+    <main class="container mx-auto px-4 py-8 mt-16">
+        <!-- Page Header -->
+        <div class="text-center mb-12">
+            <h1 class="text-4xl font-bold text-gray-800 mb-4">Simple, Transparent Pricing</h1>
+            <p class="text-xl text-gray-600 max-w-2xl mx-auto">
+                Choose the plan that works best for your content creation needs
+            </p>
+        </div>
+
+        <!-- Pricing Toggle -->
+        <div class="flex justify-center mb-12">
+            <div class="bg-white rounded-lg p-1 shadow-lg">
+                <button class="px-6 py-2 rounded-lg bg-purple-600 text-white font-medium transition-all duration-300">
+                    Monthly
+                </button>
+                <button class="px-6 py-2 rounded-lg text-gray-600 font-medium hover:bg-gray-50 transition-all duration-300">
+                    Yearly (Save 20%)
+                </button>
+            </div>
+        </div>
+
+        <!-- Pricing Cards -->
+        <div class="grid md:grid-cols-3 gap-8 max-w-6xl mx-auto">
+                <!-- Starter Plan -->
+                <div class="bg-white rounded-2xl p-8 shadow-lg hover:shadow-xl transition-all duration-300">
+                        <h3 class="text-2xl font-bold text-gray-800 mb-2">Starter</h3>
+                        <div class="text-4xl font-bold text-gray-800 mb-4">
+                            $19<span class="text-lg text-gray-600">/month</span>
+                    </div>
+                    <ul class="space-y-3 mb-8">
+                        <li class="flex items-center gap-2">
+                            <i data-feather="check" class="w-4 h-4 text-green-500"></i>
+                            <span class="text-gray-600">10 content generations/month</span>
+                        </li>
+                        <li class="flex items-center gap-2">
+                            <i data-feather="check" class="w-4 h-4 text-green-500"></i>
+                            <span class="text-gray-600">5 social media templates</span>
+                        </li>
+                        <li class="flex items-center gap-2">
+                            <i data-feather="check" class="w-4 h-4 text-green-500"></i>
+                            <span class="text-gray-600">Basic analytics</span>
+                        </li>
+                        <li class="flex items-center gap-2">
+                            <i data-feather="x" class="w-4 h-4 text-gray-400"></i>
+                            <span class="text-gray-600">Email support</span>
+                        </li>
+                    </ul>
+                            <a href="signup.html" class="block w-full bg-purple-600 hover:bg-purple-700 text-white text-center py-3 rounded-lg font-semibold transition-all duration-300 transform hover:scale-105">
+                                Start Free Trial
+                            </a>
+                        </div>
+<!-- Pro Plan -->
+                    <div class="bg-white rounded-2xl p-8 shadow-xl border-2 border-purple-600 relative">
+                        <div class="absolute -top-3 left-1/2 transform -translate-x-1/2">
+                            <span class="bg-purple-600 text-white px-4 py-1 rounded-full text-sm font-medium">
+                                Most Popular
+                            </span>
+                        </div>
+                        <h3 class="text-2xl font-bold text-gray-800 mb-2">Pro</h3>
+                        <div class="text-4xl font-bold text-gray-800 mb-4">
+                            $49<span class="text-lg text-gray-600">/month</span>
+                        </div>
+                        <ul class="space-y-3 mb-8">
+                            <li class="flex items-center gap-2">
+                                <i data-feather="check" class="w-4 h-4 text-green-500"></i>
+                                <span class="text-gray-600">Unlimited content generations</span>
+                            </li>
+                            <li class="flex items-center gap-2">
+                                    <i data-feather="check" class="w-4 h-4 text-green-500"></i>
+                                <span class="text-gray-600">All templates included</span>
+                            </li>
+                            <li class="flex items-center gap-2">
+                                    <i data-feather="check" class="w-4 h-4 text-green-500"></i>
+                                <span class="text-gray-600">Advanced analytics</span>
+                            </li>
+                            <li class="flex items-center gap-2">
+                                    <i data-feather="check" class="w-4 h-4 text-green-500"></i>
+                                <span class="text-gray-600">Priority support</span>
+                            </li>
+                        </ul>
+                        <a href="dashboard.html" class="block w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white text-center py-3 rounded-lg font-semibold transition-all duration-300 transform hover:scale-105">
+                                Get Started
+                            </a>
+                        </div>
+                        
+                        <!-- Enterprise Plan -->
+                        <div class="bg-white rounded-2xl p-8 shadow-lg hover:shadow-xl transition-all duration-300">
+                            <h3 class="text-2xl font-bold text-gray-800 mb-2">Enterprise</h3>
+                            <div class="text-4xl font-bold text-gray-800 mb-4">
+                                $99<span class="text-lg text-gray-600">/month</span>
+                        </div>
+                        <ul class="space-y-3 mb-8">
+                                <li class="flex items-center gap-2">
+                                    <i data-feather="check" class="w-4 h-4 text-green-500"></i>
+                                <span class="text-gray-600">Everything in Pro</span>
+                            </li>
+                            <li class="flex items-center gap-2">
+                                        <i data-feather="check" class="w-4 h-4 text-green-500"></i>
+                                <span class="text-gray-600">Custom AI model training</span>
+                            </li>
+                            <li class="flex items-center gap-2">
+                                        <i data-feather="check" class="w-4 h-4 text-green-500"></i>
+                                <span class="text-gray-600">White-label solutions</span>
+                            </li>
+                            <li class="flex items-center gap-2">
+                                        <i data-feather="check" class="w-4 h-4 text-green-500"></i>
+                                <span class="text-gray-600">Dedicated account manager</span>
+                            </li>
+                        </ul>
+                        <a href="contact.html" class="block w-full border border-purple-600 text-purple-600 hover:bg-purple-50 text-center py-3 rounded-lg font-semibold transition-all duration-300">
+                                        Contact Sales
+                                    </a>
+                                </div>
+                            </div>
+
+                            <!-- FAQ Section -->
+                            <section class="mt-16">
+                                <h2 class="text-3xl font-bold text-center text-gray-800 mb-8">Frequently Asked Questions</h2>
+                                <div class="grid md:grid-cols-2 gap-8">
+                                    <div>
+                                        <h3 class="text-xl font-bold text-gray-800 mb-4">How does the free trial work?</h3>
+                                <p class="text-gray-600">Start with our 14-day free trial. You'll get access to all Pro features. No credit card required.</p>
+                                </div>
+                                <div>
+                                    <h3 class="text-xl font-bold text-gray-800 mb-4">Can I change plans later?</h3>
+                                    <p class="text-gray-600">Yes, you can upgrade or downgrade your plan at any time.</p>
+                                </div>
+                                <div>
+                                    <h3 class="text-xl font-bold text-gray-800 mb-4">What payment methods do you accept?</h3>
+                                    <p class="text-gray-600">We accept all major credit cards, PayPal, and bank transfers for annual plans.</p>
+                                </div>
+                                <div>
+                                    <h3 class="text-xl font-bold text-gray-800 mb-4">Is there a limit to content generation?</h3>
+                                    <p class="text-gray-600">Starter plan has monthly limits. Pro and Enterprise plans have unlimited generations.</p>
+                                </div>
+                            </div>
+                        </section>
+                    </main>
+
+                    <custom-footer></custom-footer>
+    <script src="assets/js/admin.js"></script>
+    <script src="script.js"></script>
+    <script>
+        feather.replace();
+    </script>
+</body>
+</html>

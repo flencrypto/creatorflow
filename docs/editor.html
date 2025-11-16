@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Content Editor - CreatorFlow Studio</title>
+    <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/feather-icons/dist/feather.min.js"></script>
+    <script src="https://unpkg.com/feather-icons"></script>
+    <script src="components/navbar.js"></script>
+    <script src="components/footer.js"></script>
+</head>
+<body class="bg-gradient-to-br from-indigo-50 to-purple-100 min-h-screen">
+    <custom-navbar></custom-navbar>
+    
+    <main class="container mx-auto px-4 py-8 mt-16">
+        <!-- Editor Header -->
+        <div class="flex flex-col md:flex-row md:items-center md:justify-between mb-8">
+            <div>
+                <h1 class="text-3xl font-bold text-gray-800">Content Editor</h1>
+                <p class="text-gray-600 mt-2">Create amazing content with AI assistance</p>
+            </div>
+            <div class="flex space-x-4 mt-4 md:mt-0">
+                <button id="save-btn" class="border border-purple-600 text-purple-600 hover:bg-purple-50 px-6 py-3 rounded-lg font-semibold transition-all duration-300">
+                    Save Draft
+                </button>
+                <button id="export-btn" class="bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-lg font-semibold transition-all duration-300">
+                    Export
+                </button>
+</div>
+            </div>
+
+            <div class="grid lg:grid-cols-3 gap-8">
+                <!-- Input Panel -->
+                <div class="lg:col-span-1 space-y-6">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Your Input</label>
+                        <textarea id="input" class="w-full h-32 p-4 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent" placeholder="Describe what you want to create..."></textarea>
+                    </div>
+
+                    <!-- Template Selection -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Template</label>
+                        <select id="template" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent" class="w-full">
+                            <option value="post">Social Media Post</option>
+                            <option value="script">Video Script</option>
+                            <option value="caption">Image Caption</option>
+                        </select>
+                    </div>
+
+                    <!-- Platform Selection -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Platform</label>
+                        <select id="platform" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent" class="w-full">
+                            <option value="instagram">Instagram</option>
+                            <option value="tiktok">TikTok</option>
+                            <option value="youtube">YouTube</option>
+                            <option value="twitter">Twitter</option>
+                            <option value="facebook">Facebook</option>
+                        </select>
+                    </div>
+
+                    <!-- Tone Selection -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Tone</label>
+                        <select id="tone" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent" class="w-full">
+                            <option value="default">Default</option>
+                            <option value="casual">Casual</option>
+                            <option value="professional">Professional</option>
+                            <option value="edgy">Edgy</option>
+                        </select>
+                    </div>
+                    <button id="generate-btn" class="w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white px-6 py-3 rounded-lg font-semibold transition-all duration-300 transform hover:scale-105 hovered-element">
+                        Generate Content
+                    </button>
+</div>
+
+                <!-- Preview Panel -->
+                <div class="lg:col-span-2">
+                <div class="bg-white rounded-xl p-6 shadow-lg h-full">
+                    <h3 class="text-xl font-bold text-gray-800 mb-4">Preview</h3>
+                    <div id="preview" class="min-h-64 bg-gray-50 rounded-lg p-4 text-gray-600 overflow-y-auto">
+                        Your generated content will appear here...
+                    </div>
+                </div>
+</div>
+            </div>
+
+            <!-- History Section -->
+            <section class="mt-12">
+                <h2 class="text-2xl font-bold text-gray-800 mb-6">Recent Generations</h2>
+                <div class="bg-white rounded-xl p-6 shadow-lg">
+                    <ul id="history-list" class="space-y-2 text-gray-600">
+                    </ul>
+</div>
+            </section>
+        </main>
+
+        <custom-footer></custom-footer>
+    <script src="script.js"></script>
+    <script type="module" src="assets/js/editor.js"></script>
+    <script>
+        feather.replace();
+    </script>
+</body>
+</html>

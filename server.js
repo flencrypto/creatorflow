@@ -7,8 +7,11 @@ import express from 'express';
 import dotenv from 'dotenv';
 import cors from 'cors';
 import session from 'express-session';
+import RedisStore from 'connect-redis';
+import { createClient as createRedisClient } from 'redis';
 import passport from 'passport';
 import multer from 'multer';
+import csurf from 'csurf';
 import { z } from 'zod';
 import { Strategy as GoogleStrategy } from 'passport-google-oauth20';
 import { Strategy as FacebookStrategy } from 'passport-facebook';
@@ -32,21 +35,44 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 const NODE_ENV = process.env.NODE_ENV || 'development';
+const isProduction = NODE_ENV === 'production';
 
 const moduleFilename = fileURLToPath(import.meta.url);
 const moduleDirectory = path.dirname(moduleFilename);
 const publicDirectory = path.join(moduleDirectory, 'public');
 const oauthStateSessionKey = 'oauthStates';
 
+const MAX_UPLOAD_BYTES = 50 * 1024 * 1024; // 50MB safety limit for upstream assets
+const allowedImageMimeTypes = new Set([
+  'image/png',
+  'image/jpeg',
+  'image/webp',
+  'image/gif',
+  'image/bmp',
+  'image/tiff',
+]);
+const allowedVideoMimeTypes = new Set([
+  'video/mp4',
+  'video/quicktime',
+  'video/x-msvideo',
+  'video/x-matroska',
+]);
+
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: 50 * 1024 * 1024, // 50MB safety limit for upstream assets
+    fileSize: MAX_UPLOAD_BYTES,
   },
 });
 
 const SESSION_SECRET = process.env.SESSION_SECRET;
-if (!SESSION_SECRET) {
+if (!SESSION_SECRET && isProduction) {
+  throw new Error('SESSION_SECRET is required in production and must be a strong, unpredictable value.');
+}
+
+if (SESSION_SECRET && SESSION_SECRET.length < 32 && isProduction) {
+  throw new Error('SESSION_SECRET must be at least 32 characters in production.');
+} else if (!SESSION_SECRET) {
   console.warn(
     '[WARN] SESSION_SECRET not set. Falling back to an insecure default for local development. Configure SESSION_SECRET in production.'
   );
@@ -124,13 +150,67 @@ const corsOrigins = process.env.CORS_ORIGIN
   ? process.env.CORS_ORIGIN.split(',').map((origin) => origin.trim()).filter(Boolean)
   : null;
 
+const defaultDevelopmentOrigins = ['http://localhost:3000'];
+const effectiveCorsOrigins =
+  corsOrigins && corsOrigins.length > 0
+    ? corsOrigins
+    : isProduction
+      ? []
+      : defaultDevelopmentOrigins;
+
+if (effectiveCorsOrigins.length === 0) {
+  throw new Error('CORS_ORIGIN is required in production to define the allowed origin allowlist.');
+}
+
+const allowedOrigins = new Set(effectiveCorsOrigins);
+
+const redisUrl = process.env.REDIS_URL;
+let sessionStore = undefined;
+
+if (redisUrl) {
+  const redisClient = createRedisClient({ url: redisUrl });
+  redisClient.on('error', (err) => {
+    console.error('[ERROR] Redis client error', err);
+  });
+
+  try {
+    await redisClient.connect();
+    sessionStore = new RedisStore({
+      client: redisClient,
+      prefix: 'creatorflow:sess:',
+      disableTouch: true,
+    });
+  } catch (error) {
+    if (isProduction) {
+      throw new Error('Failed to connect to Redis session store.');
+    }
+    console.warn('[WARN] Redis connection failed. Falling back to in-memory session store for local development.', error);
+  }
+} else if (isProduction) {
+  throw new Error('REDIS_URL is required in production for persistent session storage.');
+} else {
+  console.warn('[WARN] REDIS_URL not set. Falling back to in-memory session store for local development only.');
+}
+
 if (process.env.TRUST_PROXY === 'true') {
   app.set('trust proxy', 1);
 }
 
 app.use(
   cors({
-    origin: corsOrigins && corsOrigins.length > 0 ? corsOrigins : true,
+    origin(origin, callback) {
+      if (!origin) {
+        return callback(null, true);
+      }
+
+      if (allowedOrigins.has(origin)) {
+        return callback(null, true);
+      }
+
+      const error = new Error('CORS origin denied');
+      error.status = 403;
+      return callback(error);
+    },
     credentials: true,
   })
 );
@@ -141,14 +221,17 @@ app.use(
     secret: SESSION_SECRET || 'development-session-secret',
     resave: false,
     saveUninitialized: false,
+    store: sessionStore,
     cookie: {
       httpOnly: true,
       sameSite: 'lax',
-      secure: NODE_ENV === 'production',
+      secure: isProduction,
       maxAge: 1000 * 60 * 60 * 4, // 4 hours
     },
+    name: 'creatorflow.sid',
   })
 );
+const csrfProtection = csurf({ cookie: false });
 app.use(passport.initialize());
 app.use(passport.session());
 
@@ -266,7 +349,11 @@ app.get('/api/auth/status', (req, res) => {
   });
 });
 
-app.post('/api/auth/logout', (req, res) => {
+app.get('/api/auth/csrf', csrfProtection, (req, res) => {
+  res.json({ csrfToken: req.csrfToken() });
+});
+
+app.post('/api/auth/logout', requireAuth, csrfProtection, (req, res) => {
   req.logout((err) => {
     if (err) {
       console.error('[ERROR] logout failed', err);
@@ -529,7 +616,35 @@ function normaliseMulterFile(file) {
     buffer: file.buffer,
     mimetype: file.mimetype,
     filename: file.originalname,
+    size: typeof file.size === 'number' ? file.size : file.buffer?.length || null,
   };
+}
+
+function validateUploadedFile(file, allowedMimeTypes, fieldName) {
+  if (!file) {
+    return null;
+  }
+
+  if (!allowedMimeTypes.has(file.mimetype)) {
+    return `${fieldName} must be one of the allowed types: ${Array.from(allowedMimeTypes).join(', ')}.`;
+  }
+
+  const fileSize = typeof file.size === 'number' ? file.size : file.buffer?.length;
+  if (typeof fileSize === 'number' && fileSize > MAX_UPLOAD_BYTES) {
+    return `${fieldName} exceeds the maximum allowed size of ${Math.floor(MAX_UPLOAD_BYTES / (1024 * 1024))}MB.`;
+  }
+
+  return null;
+}
+
+function validateUploadedFiles(files, allowedMimeTypes, fieldName) {
+  for (const file of files) {
+    const validationError = validateUploadedFile(file, allowedMimeTypes, fieldName);
+    if (validationError) {
+      return validationError;
+    }
+  }
+  return null;
 }
 
 function normaliseErrorStatus(error, fallback = 500) {
@@ -851,7 +966,7 @@ app.post('/api/generate', async (req, res) => {
   }
 });
 
-app.post('/api/content/analysis', requireAuth, async (req, res) => {
+app.post('/api/content/analysis', requireAuth, csrfProtection, async (req, res) => {
   if (!OPEN_API_KEY) {
     return res.status(503).json({
       ok: false,
@@ -930,7 +1045,7 @@ app.get('/api/integrations/openai/models', async (_req, res) => {
   }
 });
 
-app.post('/api/integrations/openai/connectors', requireAuth, async (req, res) => {
+app.post('/api/integrations/openai/connectors', requireAuth, csrfProtection, async (req, res) => {
   const validationError = validateConnectorSuggestionBody(req.body);
   if (validationError) {
     return res.status(400).json({ ok: false, error: validationError });
@@ -960,7 +1075,7 @@ app.post('/api/integrations/openai/connectors', requireAuth, async (req, res) =>
   }
 });
 
-app.post('/api/integrations/:id/test', requireAuth, async (req, res) => {
+app.post('/api/integrations/:id/test', requireAuth, csrfProtection, async (req, res) => {
   if (req.params.id !== 'openai') {
     return res.status(404).json({ ok: false, error: 'Unknown integration id.' });
   }
@@ -972,7 +1087,7 @@ app.post('/api/integrations/:id/test', requireAuth, async (req, res) => {
   await sendOpenAiTestResponse(res);
 });
 
-app.post('/api/integrations/openai/test', requireAuth, async (_req, res) => {
+app.post('/api/integrations/openai/test', requireAuth, csrfProtection, async (_req, res) => {
   if (!OPEN_API_KEY) {
     return res.status(503).json({ ok: false, error: 'OpenAI integration is not configured.' });
   }
@@ -983,10 +1098,16 @@ app.post('/api/integrations/openai/test', requireAuth, async (_req, res) => {
 app.post(
   '/api/integrations/openai/videos',
   requireAuth,
+  csrfProtection,
   upload.single('input_reference'),
   async (req, res) => {
     if (!OPEN_API_KEY) {
       return res.status(503).json({ ok: false, error: 'OpenAI integration is not configured.' });
+    }
+
+    const validationError = validateUploadedFile(req.file, allowedVideoMimeTypes, 'input_reference');
+    if (validationError) {
+      return res.status(400).json({ ok: false, error: validationError });
     }
 
     const validation = createVideoSchema.safeParse({
@@ -1021,7 +1142,7 @@ app.post(
   }
 );
 
-app.post('/api/integrations/openai/videos/:videoId/remix', requireAuth, async (req, res) => {
+app.post('/api/integrations/openai/videos/:videoId/remix', requireAuth, csrfProtection, async (req, res) => {
   if (!OPEN_API_KEY) {
     return res.status(503).json({ ok: false, error: 'OpenAI integration is not configured.' });
   }
@@ -1163,7 +1284,7 @@ app.get('/api/integrations/openai/videos/:videoId/content', requireAuth, async (
   }
 });
 
-app.post('/api/integrations/openai/images/generations', requireAuth, async (req, res) => {
+app.post('/api/integrations/openai/images/generations', requireAuth, csrfProtection, async (req, res) => {
   if (!OPEN_API_KEY) {
     return res.status(503).json({ ok: false, error: 'OpenAI integration is not configured.' });
   }
@@ -1195,6 +1316,7 @@ app.post('/api/integrations/openai/images/generations', requireAuth, async (req,
 app.post(
   '/api/integrations/openai/images/edits',
   requireAuth,
+  csrfProtection,
   upload.fields([
     { name: 'image', maxCount: 16 },
     { name: 'mask', maxCount: 1 },
@@ -1210,16 +1332,30 @@ app.post(
       return res.status(400).json({ ok: false, error: issue?.message || 'Invalid payload.' });
     }
 
-    const imageFiles = Array.isArray(req.files?.image) ? req.files.image.map(normaliseMulterFile) : [];
-    if (!imageFiles || imageFiles.length === 0) {
+    const rawImageFiles = Array.isArray(req.files?.image) ? req.files.image : [];
+    if (!rawImageFiles || rawImageFiles.length === 0) {
       return res.status(400).json({ ok: false, error: 'At least one image file is required.' });
     }
+
+    const imageValidationError = validateUploadedFiles(rawImageFiles, allowedImageMimeTypes, 'image');
+    if (imageValidationError) {
+      return res.status(400).json({ ok: false, error: imageValidationError });
+    }
+
+    const rawMaskFile = Array.isArray(req.files?.mask) ? req.files.mask[0] : null;
+    const maskValidationError = validateUploadedFile(rawMaskFile, allowedImageMimeTypes, 'mask');
+    if (maskValidationError) {
+      return res.status(400).json({ ok: false, error: maskValidationError });
+    }
+
+    const imageFiles = rawImageFiles.map(normaliseMulterFile);
+    const maskFile = normaliseMulterFile(rawMaskFile);
 
     try {
       const response = await createImageEdit({
         apiKey: OPEN_API_KEY,
         images: imageFiles,
-        mask: normaliseMulterFile(Array.isArray(req.files?.mask) ? req.files.mask[0] : null),
+        mask: maskFile,
         options: toSnakeCasePayload(validation.data),
       });
 
@@ -1238,6 +1374,7 @@ app.post(
 app.post(
   '/api/integrations/openai/images/variations',
   requireAuth,
+  csrfProtection,
   upload.single('image'),
   async (req, res) => {
     if (!OPEN_API_KEY) {
@@ -1253,6 +1390,11 @@ app.post(
     const imageFile = normaliseMulterFile(req.file);
     if (!imageFile) {
       return res.status(400).json({ ok: false, error: 'An image file is required.' });
+    }
+
+    const imageValidationError = validateUploadedFile(imageFile, allowedImageMimeTypes, 'image');
+    if (imageValidationError) {
+      return res.status(400).json({ ok: false, error: imageValidationError });
     }
 
     try {
@@ -1273,6 +1415,18 @@ app.post(
     }
   }
 );
+
+app.use((err, req, res, next) => {
+  if (err.code === 'EBADCSRFTOKEN') {
+    return res.status(403).json({ ok: false, error: 'Invalid or missing CSRF token.' });
+  }
+
+  if (err.status === 403 && err.message === 'CORS origin denied') {
+    return res.status(403).json({ ok: false, error: 'Origin not allowed by CORS policy.' });
+  }
+
+  return next(err);
+});
 
 // Serve static files (your HTML/CSS/JS)
 // Keep this after API route definitions so POST/PUT/etc. requests reach handlers instead of

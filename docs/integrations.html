@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Integrations - CreatorFlow Studio</title>
+    <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/feather-icons/dist/feather.min.js"></script>
+    <script src="https://unpkg.com/feather-icons"></script>
+    <script src="components/navbar.js"></script>
+    <script src="components/footer.js"></script>
+</head>
+<body class="bg-gradient-to-br from-indigo-50 to-purple-100 min-h-screen">
+    <custom-navbar></custom-navbar>
+
+    <main class="container mx-auto px-4 py-8 mt-16">
+        <header class="text-center mb-12">
+            <h1 class="text-4xl font-bold text-gray-800 mb-4">CreatorFlow Integrations Hub</h1>
+            <p class="text-xl text-gray-600 max-w-3xl mx-auto">
+                Connect automation-ready OpenAI connectors, manage channel hand-offs, and explore native platform integrations
+                without leaving CreatorFlow Studio.
+            </p>
+        </header>
+
+        <!-- OpenAI Integration Control Center -->
+        <section class="mb-16 grid gap-6 lg:grid-cols-2">
+            <article class="bg-white rounded-3xl shadow-xl border border-slate-200 p-8 flex flex-col gap-6">
+                <div class="flex flex-col gap-3">
+                    <div class="flex items-center gap-3">
+                        <span id="openai-status-badge" class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-200 text-slate-700 text-sm font-semibold">
+                            <i data-feather="loader" class="w-4 h-4 animate-spin"></i>
+                            <span>Checking...</span>
+                        </span>
+                        <span class="text-sm font-medium text-slate-500">Server-side OpenAI credential</span>
+                    </div>
+                    <p id="openai-status-text" class="text-slate-600 text-sm">
+                        We'll verify your OPEN_API_KEY (or OPEN_AI_KEY secret) and surface connector availability in real time.
+                    </p>
+                </div>
+                <div class="flex flex-wrap items-center gap-3">
+                    <button type="button" data-integration-test="openai" class="px-4 py-2 rounded-lg bg-indigo-600 text-white font-semibold text-sm hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-400">
+                        Run connection health check
+                    </button>
+                    <p id="openai-cache-details" class="text-xs text-slate-500">
+                        Model cache status will appear here after the first check.
+                    </p>
+                </div>
+                <div class="bg-slate-50 rounded-2xl p-5 border border-slate-200">
+                    <h3 class="text-lg font-semibold text-slate-800 mb-2">What you unlock</h3>
+                    <ul class="list-disc list-inside text-sm text-slate-600 space-y-1">
+                        <li>AI-assisted content drafting and review workflows</li>
+                        <li>Connector playbooks tailored to each channel</li>
+                        <li>Model catalog visibility for compliance and QA</li>
+                    </ul>
+                </div>
+            </article>
+
+            <article class="bg-white rounded-3xl shadow-xl border border-slate-200 p-8 flex flex-col gap-6">
+                <header class="flex items-center justify-between">
+                    <div>
+                        <h3 class="text-2xl font-semibold text-slate-900">OpenAI Model Catalog</h3>
+                        <p class="text-sm text-slate-500">Review available models before routing workloads.</p>
+                    </div>
+                    <button id="load-openai-models" type="button" class="px-4 py-2 rounded-lg bg-purple-600 text-white font-semibold text-sm hover:bg-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-400">
+                        Load available models
+                    </button>
+                </header>
+                <ul id="openai-model-list" class="grid gap-3 max-h-64 overflow-y-auto pr-1" aria-live="polite">
+                    <li class="text-sm text-slate-500">Model list populates after loading.</li>
+                </ul>
+            </article>
+        </section>
+
+        <!-- Connector Catalog -->
+        <section class="mb-16">
+            <div class="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4 mb-8">
+                <div>
+                    <h2 class="text-3xl font-bold text-gray-800">OpenAI connectors ready to launch</h2>
+                    <p class="text-gray-600 max-w-2xl">
+                        Every connector below is powered by your server-side OpenAI key and respects CreatorFlow guardrails. Toggle
+                        health checks to confirm connectivity and review documentation before rollout.
+                    </p>
+                </div>
+                <span class="text-sm text-slate-500">Catalog updates automatically when credentials change.</span>
+            </div>
+            <p id="integration-empty-state" class="text-center text-sm text-slate-500 bg-white/80 border border-dashed border-slate-300 rounded-2xl py-6">
+                Loading integration catalog...
+            </p>
+            <div id="integration-grid" class="grid gap-6 md:grid-cols-2 xl:grid-cols-3"></div>
+        </section>
+
+        <!-- Connector Playbook Generator -->
+        <section class="mb-20 grid gap-8 lg:grid-cols-2">
+            <article class="bg-white rounded-3xl shadow-xl border border-slate-200 p-8">
+                <h2 class="text-3xl font-bold text-gray-800 mb-4">Design a connector playbook</h2>
+                <p class="text-gray-600 mb-6">
+                    Describe the workflow you want to automate and we will create battle-tested OpenAI connector steps plus ready-to-run automations.
+                </p>
+                <form id="connector-suggestion-form" class="space-y-5">
+                    <div>
+                        <label for="useCase" class="block text-sm font-semibold text-slate-700 mb-2">What do you want to automate?</label>
+                        <textarea id="useCase" name="useCase" rows="4" class="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" placeholder="Example: Repurpose my YouTube scripts into Instagram Reels with CTA variants." required></textarea>
+                    </div>
+                    <div class="grid gap-5 md:grid-cols-2">
+                        <div>
+                            <label for="audience" class="block text-sm font-semibold text-slate-700 mb-2">Primary audience</label>
+                            <input id="audience" name="audience" type="text" class="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" placeholder="Growth marketers, community managers, ...">
+                        </div>
+                        <div>
+                            <label for="tone" class="block text-sm font-semibold text-slate-700 mb-2">Preferred tone</label>
+                            <input id="tone" name="tone" type="text" class="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" placeholder="Analytical, playful, authoritative...">
+                        </div>
+                    </div>
+                    <div>
+                        <label for="channels" class="block text-sm font-semibold text-slate-700 mb-2">Priority channels</label>
+                        <input id="channels" name="channels" type="text" class="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" placeholder="Comma-separated list (e.g. Instagram, TikTok)">
+                    </div>
+                    <button type="submit" class="w-full md:w-auto inline-flex justify-center px-6 py-3 rounded-xl bg-indigo-600 text-white font-semibold text-sm hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-400">
+                        Generate connector plan
+                    </button>
+                </form>
+            </article>
+
+            <article class="bg-white rounded-3xl shadow-xl border border-slate-200 p-8 flex flex-col gap-6">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h3 class="text-2xl font-semibold text-slate-900">AI-generated playbook</h3>
+                        <p id="connector-summary" class="text-sm text-slate-500">
+                            Results appear here. Each plan includes setup requirements and automated hand-offs.
+                        </p>
+                    </div>
+                    <i data-feather="zap" class="w-8 h-8 text-amber-500"></i>
+                </div>
+                <div id="connector-suggestions" class="space-y-4" aria-live="polite">
+                    <p class="text-sm text-slate-500">Submit your workflow to receive recommended connectors.</p>
+                </div>
+            </article>
+        </section>
+
+        <!-- Existing platform overview sections -->
+        <section class="mb-16">
+            <h2 class="text-3xl font-bold text-gray-800 mb-8 text-center">Social Media Platforms</h2>
+            <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <div class="bg-white rounded-xl p-6 shadow-lg hover:shadow-xl transition-all duration-300">
+                    <div class="w-16 h-16 bg-gradient-to-br from-pink-500 to-purple-600 rounded-lg flex items-center justify-center mb-4 mx-auto">
+                        <i data-feather="instagram" class="text-white w-8 h-8"></i>
+                    </div>
+                    <h3 class="text-xl font-bold text-gray-800 mb-3 text-center">Instagram</h3>
+                    <p class="text-gray-600 text-center">Direct publishing for posts, stories, and reels</p>
+                </div>
+                <div class="bg-white rounded-xl p-6 shadow-lg hover:shadow-xl transition-all duration-300">
+                    <div class="w-16 h-16 bg-black rounded-lg flex items-center justify-center mb-4 mx-auto">
+                        <i data-feather="video" class="text-white w-8 h-8"></i>
+                    </div>
+                    <h3 class="text-xl font-bold text-gray-800 mb-3 text-center">TikTok</h3>
+                    <p class="text-gray-600 text-center">Schedule and publish videos directly</p>
+                </div>
+                <div class="bg-white rounded-xl p-6 shadow-lg hover:shadow-xl transition-all duration-300">
+                    <div class="w-16 h-16 bg-red-100 rounded-lg flex items-center justify-center mb-4 mx-auto">
+                        <i data-feather="youtube" class="text-red-600 w-8 h-8"></i>
+                    </div>
+                    <h3 class="text-xl font-bold text-gray-800 mb-3 text-center">YouTube</h3>
+                    <p class="text-gray-600 text-center">Upload videos and manage descriptions</p>
+                </div>
+                <div class="bg-white rounded-xl p-6 shadow-lg hover:shadow-xl transition-all duration-300">
+                    <div class="w-16 h-16 bg-blue-100 rounded-lg flex items-center justify-center mb-4 mx-auto">
+                        <i data-feather="twitter" class="text-blue-600 w-8 h-8"></i>
+                    </div>
+                    <h3 class="text-xl font-bold text-gray-800 mb-3 text-center">Twitter</h3>
+                    <p class="text-gray-600 text-center">Schedule tweets and threads</p>
+                </div>
+                <div class="bg-white rounded-xl p-6 shadow-lg hover:shadow-xl transition-all duration-300">
+                    <div class="w-16 h-16 bg-blue-200 rounded-lg flex items-center justify-center mb-4 mx-auto">
+                        <i data-feather="facebook" class="text-blue-800 w-8 h-8"></i>
+                    </div>
+                    <h3 class="text-xl font-bold text-gray-800 mb-3 text-center">Facebook</h3>
+                    <p class="text-gray-600 text-center">Post to pages and groups</p>
+                </div>
+                <div class="bg-white rounded-xl p-6 shadow-lg hover:shadow-xl transition-all duration-300">
+                    <div class="w-16 h-16 bg-blue-300 rounded-lg flex items-center justify-center mb-4 mx-auto">
+                        <i data-feather="linkedin" class="text-white w-8 h-8"></i>
+                    </div>
+                    <h3 class="text-xl font-bold text-gray-800 mb-3 text-center">LinkedIn</h3>
+                    <p class="text-gray-600 text-center">Share professional content</p>
+                </div>
+                <div class="bg-white rounded-xl p-6 shadow-lg hover:shadow-xl transition-all duration-300">
+                    <div class="w-16 h-16 bg-red-200 rounded-lg flex items-center justify-center mb-4 mx-auto">
+                        <i data-feather="pinterest" class="text-red-800 w-8 h-8"></i>
+                    </div>
+                    <h3 class="text-xl font-bold text-gray-800 mb-3 text-center">Pinterest</h3>
+                    <p class="text-gray-600 text-center">Pin images and create boards</p>
+                </div>
+            </div>
+        </section>
+
+        <section class="mb-16">
+            <h2 class="text-3xl font-bold text-gray-800 mb-8 text-center">Content Management Tools</h2>
+            <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <div class="bg-white rounded-xl p-6 shadow-lg hover:shadow-xl transition-all duration-300">
+                    <div class="w-16 h-16 bg-gradient-to-r from-blue-400 to-purple-500 rounded-lg flex items-center justify-center mb-4 mx-auto">
+                        <i data-feather="image" class="text-white w-8 h-8"></i>
+                    </div>
+                    <h3 class="text-xl font-bold text-gray-800 mb-3 text-center">Canva</h3>
+                    <p class="text-gray-600 text-center">Import designs and collaborate on visuals</p>
+                </div>
+                <div class="bg-white rounded-xl p-6 shadow-lg hover:shadow-xl transition-all duration-300">
+                    <div class="w-16 h-16 bg-gray-800 rounded-lg flex items-center justify-center mb-4 mx-auto">
+                        <i data-feather="file-text" class="text-white w-8 h-8"></i>
+                    </div>
+                    <h3 class="text-xl font-bold text-gray-800 mb-3 text-center">Notion</h3>
+                    <p class="text-gray-600 text-center">Sync with your content database</p>
+                </div>
+                <div class="bg-white rounded-xl p-6 shadow-lg hover:shadow-xl transition-all duration-300">
+                    <div class="w-16 h-16 bg-blue-500 rounded-lg flex items-center justify-center mb-4 mx-auto">
+                        <i data-feather="grid" class="text-white w-8 h-8"></i>
+                    </div>
+                    <h3 class="text-xl font-bold text-gray-800 mb-3 text-center">Airtable</h3>
+                    <p class="text-gray-600 text-center">Organize content in custom bases</p>
+                </div>
+                <div class="bg-white rounded-xl p-6 shadow-lg hover:shadow-xl transition-all duration-300">
+                    <div class="w-16 h-16 bg-green-500 rounded-lg flex items-center justify-center mb-4 mx-auto">
+                        <i data-feather="hard-drive" class="text-white w-8 h-8"></i>
+                    </div>
+                    <h3 class="text-xl font-bold text-gray-800 mb-3 text-center">Google Drive</h3>
+                    <p class="text-gray-600 text-center">Store and access all your files</p>
+                </div>
+                <div class="bg-white rounded-xl p-6 shadow-lg hover:shadow-xl transition-all duration-300">
+                    <div class="w-16 h-16 bg-blue-600 rounded-lg flex items-center justify-center mb-4 mx-auto">
+                        <i data-feather="folder" class="text-white w-8 h-8"></i>
+                    </div>
+                    <h3 class="text-xl font-bold text-gray-800 mb-3 text-center">Dropbox</h3>
+                    <p class="text-gray-600 text-center">Sync files across devices</p>
+                </div>
+            </div>
+        </section>
+
+        <section class="mb-16">
+            <h2 class="text-3xl font-bold text-gray-800 mb-8 text-center">Analytics &amp; SEO Tools</h2>
+            <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <div class="bg-white rounded-xl p-6 shadow-lg hover:shadow-xl transition-all duration-300">
+                    <div class="w-16 h-16 bg-orange-500 rounded-lg flex items-center justify-center mb-4 mx-auto">
+                        <i data-feather="bar-chart-2" class="text-white w-8 h-8"></i>
+                    </div>
+                    <h3 class="text-xl font-bold text-gray-800 mb-3 text-center">Google Analytics</h3>
+                    <p class="text-gray-600 text-center">Track content performance</p>
+                </div>
+                <div class="bg-white rounded-xl p-6 shadow-lg hover:shadow-xl transition-all duration-300">
+                    <div class="w-16 h-16 bg-red-500 rounded-lg flex items-center justify-center mb-4 mx-auto">
+                        <i data-feather="search" class="text-white w-8 h-8"></i>
+                    </div>
+                    <h3 class="text-xl font-bold text-gray-800 mb-3 text-center">SEMrush</h3>
+                    <p class="text-gray-600 text-center">SEO optimization insights</p>
+                </div>
+                <div class="bg-white rounded-xl p-6 shadow-lg hover:shadow-xl transition-all duration-300">
+                    <div class="w-16 h-16 bg-purple-600 rounded-lg flex items-center justify-center mb-4 mx-auto">
+                        <i data-feather="globe" class="text-white w-8 h-8"></i>
+                    </div>
+                    <h3 class="text-xl font-bold text-gray-800 mb-3 text-center">Ahrefs</h3>
+                    <p class="text-gray-600 text-center">Competitor analysis and tracking</p>
+                </div>
+            </div>
+        </section>
+
+        <section class="text-center bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-2xl p-12">
+            <h2 class="text-3xl font-bold mb-4">Need Another Integration?</h2>
+            <p class="text-xl mb-8 max-w-2xl mx-auto">
+                We're constantly expanding our integration ecosystem. Let us know what tools you'd like to see next.
+            </p>
+            <div class="flex flex-col sm:flex-row gap-4 justify-center">
+                <a href="contact.html" class="bg-white text-purple-600 hover:bg-purple-50 px-8 py-3 rounded-lg font-semibold transition-all duration-300 transform hover:scale-105">
+                    Request Integration
+                </a>
+                <a href="signup.html" class="border border-white text-white hover:bg-white hover:text-purple-600 px-8 py-3 rounded-lg font-semibold transition-all duration-300">
+                    Start Free Trial
+                </a>
+            </div>
+        </section>
+    </main>
+
+    <custom-footer></custom-footer>
+    <script src="script.js"></script>
+    <script type="module" src="assets/js/integrations.js"></script>
+    <script>
+        feather.replace();
+    </script>
+</body>
+</html>

@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Templates - CreatorFlow Studio</title>
+    <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/feather-icons/dist/feather.min.js"></script>
+    <script src="https://unpkg.com/feather-icons"></script>
+    <script src="components/navbar.js"></script>
+    <script src="components/footer.js"></script>
+</head>
+<body class="bg-gradient-to-br from-indigo-50 to-purple-100 min-h-screen">
+    <custom-navbar></custom-navbar>
+    
+    <main class="container mx-auto px-4 py-8 mt-16">
+        <!-- Page Header -->
+        <div class="text-center mb-12">
+            <h1 class="text-4xl font-bold text-gray-800 mb-4">Content Templates</h1>
+            <p class="text-xl text-gray-600 max-w-2xl mx-auto">
+                Jumpstart your content creation with our professionally designed templates
+            </p>
+        </div>
+
+        <!-- Template Categories -->
+        <div class="flex flex-wrap justify-center gap-4 mb-8">
+            <button class="bg-purple-600 text-white px-6 py-2 rounded-lg font-medium transition-all duration-300">
+                All Templates
+            </button>
+            <button class="bg-white text-gray-700 px-6 py-2 rounded-lg font-medium border border-gray-300 hover:border-purple-600 transition-all duration-300">
+                Social Media
+            </button>
+            <button class="bg-white text-gray-700 px-6 py-2 rounded-lg font-medium border border-gray-300 hover:border-purple-600 transition-all duration-300">
+                Video Scripts
+            </button>
+            <button class="bg-white text-gray-700 px-6 py-2 rounded-lg font-medium border border-gray-300 hover:border-purple-600 transition-all duration-300">
+                Blog Posts
+            </button>
+        </div>
+
+        <!-- Templates Grid -->
+        <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+                <!-- Instagram Post Template -->
+                <div class="bg-white rounded-xl p-6 shadow-lg hover:shadow-xl transition-all duration-300 cursor-pointer">
+                    <div class="w-16 h-16 bg-pink-100 rounded-lg flex items-center justify-center mb-4">
+                    <i data-feather="instagram" class="text-pink-600 w-8 h-8"></i>
+                </div>
+                <h3 class="text-xl font-bold text-gray-800 mb-3">Instagram Post</h3>
+                <p class="text-gray-600 mb-4">Perfect for engaging visual content with captions and hashtags</p>
+                <div class="flex items-center justify-between">
+                    <span class="text-sm text-gray-500">Social Media</span>
+                    <button class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg font-medium transition-all duration-300">
+                        Use Template
+                    </button>
+                </div>
+            </div>
+            
+            <!-- TikTok Video Template -->
+            <div class="bg-white rounded-xl p-6 shadow-lg hover:shadow-xl transition-all duration-300 cursor-pointer">
+                <div class="w-16 h-16 bg-black rounded-lg flex items-center justify-center mb-4">
+                    <i data-feather="video" class="text-white w-8 h-8"></i>
+                </div>
+                <h3 class="text-xl font-bold text-gray-800 mb-3">TikTok Video Script</h3>
+                <p class="text-gray-600 mb-4">Structure for viral short-form videos</p>
+                <div class="flex items-center justify-between">
+                    <span class="text-sm text-gray-500">Video Scripts</span>
+                    <button class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg font-medium transition-all duration-300">
+                        Use Template
+                    </button>
+                </div>
+            </div>
+            
+            <!-- YouTube Script Template -->
+            <div class="bg-white rounded-xl p-6 shadow-lg hover:shadow-xl transition-all duration-300 cursor-pointer">
+                <div class="w-16 h-16 bg-red-100 rounded-lg flex items-center justify-center mb-4">
+                    <i data-feather="youtube" class="text-red-600 w-8 h-8"></i>
+                </div>
+                <h3 class="text-xl font-bold text-gray-800 mb-3">YouTube Video Script</h3>
+                <p class="text-gray-600 mb-4">Complete structure for long-form video content</p>
+                <div class="flex items-center justify-between">
+                    <span class="text-sm text-gray-500">Video Scripts</span>
+                    <button class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg font-medium transition-all duration-300">
+                        Use Template
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Twitter Thread Template -->
+            <div class="bg-white rounded-xl p-6 shadow-lg hover:shadow-xl transition-all duration-300 cursor-pointer">
+                <div class="w-16 h-16 bg-blue-100 rounded-lg flex items-center justify-center mb-4">
+                    <i data-feather="twitter" class="text-blue-600 w-8 h-8"></i>
+                </div>
+                <h3 class="text-xl font-bold text-gray-800 mb-3">Twitter Thread</h3>
+                <p class="text-gray-600 mb-4">Template for engaging multi-tweet content</p>
+                <div class="flex items-center justify-between">
+                    <span class="text-sm text-gray-500">Social Media</span>
+                    <button class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg font-medium transition-all duration-300">
+                        Use Template
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Blog Post Template -->
+            <div class="bg-white rounded-xl p-6 shadow-lg hover:shadow-xl transition-all duration-300 cursor-pointer">
+                <div class="w-16 h-16 bg-green-100 rounded-lg flex items-center justify-center mb-4">
+                    <i data-feather="file-text" class="text-green-600 w-8 h-8"></i>
+                </div>
+                <h3 class="text-xl font-bold text-gray-800 mb-3">Blog Post Outline</h3>
+                <p class="text-gray-600 mb-4">Structure for comprehensive blog articles</p>
+                <div class="flex items-center justify-between">
+                    <span class="text-sm text-gray-500">Blog Posts</span>
+                    <button class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg font-medium transition-all duration-300">
+                        Use Template
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Email Newsletter Template -->
+            <div class="bg-white rounded-xl p-6 shadow-lg hover:shadow-xl transition-all duration-300 cursor-pointer">
+                <div class="w-16 h-16 bg-orange-100 rounded-lg flex items-center justify-center mb-4">
+                    <i data-feather="mail" class="text-orange-600 w-8 h-8"></i>
+                </div>
+                <h3 class="text-xl font-bold text-gray-800 mb-3">Email Newsletter</h3>
+                <p class="text-gray-600 mb-4">Template for engaging email campaigns</p>
+                <div class="flex items-center justify-between">
+                    <span class="text-sm text-gray-500">Email Marketing</span>
+                    <button class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg font-medium transition-all duration-300">
+                        Use Template
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- CTA Section -->
+        <section class="text-center mt-16">
+            <h2 class="text-3xl font-bold text-gray-800 mb-4">Can't Find What You Need?</h2>
+            <p class="text-gray-600 mb-8 max-w-2xl mx-auto">
+                We're constantly adding new templates. Request a custom template or build your own from scratch.
+            </p>
+            <div class="flex flex-col sm:flex-row gap-4 justify-center">
+                <a href="editor.html" class="bg-purple-600 hover:bg-purple-700 text-white px-8 py-3 rounded-lg font-semibold transition-all duration-300 transform hover:scale-105">
+                    Create Custom Template
+                </a>
+                <a href="contact.html" class="border border-purple-600 text-purple-600 hover:bg-purple-50 px-8 py-3 rounded-lg font-semibold transition-all duration-300">
+                            Request Template
+                        </a>
+                    </div>
+</div>
+            </section>
+        </main>
+
+        <custom-footer></custom-footer>
+    <script src="assets/js/admin.js"></script>
+    <script src="script.js"></script>
+    <script>
+        feather.replace();
+    </script>
+</body>
+</html>

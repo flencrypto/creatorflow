@@ -46,3 +46,13 @@ npm run dev
 ```
 
 Visit `http://localhost:3000/login.html` to test social sign-in, and `dashboard.html` for AI-powered content feedback once authenticated.
+
+## GitHub Pages deployment
+
+GitHub Pages expects either an `index.html` in the repository root or within a `docs/` directory. All static assets for CreatorFlow live under `public/`, so run the following helper before pushing to ensure Pages receives an up-to-date build:
+
+```
+npm run build:static
+```
+
+This script copies the `public/` directory into `docs/`, which GitHub Pages can serve directly without needing the Node.js server. Commit the generated `docs/` folder whenever you update any static files.

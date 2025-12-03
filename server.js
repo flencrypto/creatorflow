@@ -36,6 +36,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const NODE_ENV = process.env.NODE_ENV || 'development';
 const isProduction = NODE_ENV === 'production';
+const isTest = NODE_ENV === 'test';
 
 const moduleFilename = fileURLToPath(import.meta.url);
 const moduleDirectory = path.dirname(moduleFilename);
@@ -43,6 +44,13 @@ const publicDirectory = path.join(moduleDirectory, 'public');
 const oauthStateSessionKey = 'oauthStates';
 
 const MAX_UPLOAD_BYTES = 50 * 1024 * 1024; // 50MB safety limit for upstream assets
+const SESSION_COOKIE_NAME = 'creatorflow.sid';
+const sessionCookieConfig = {
+  httpOnly: true,
+  sameSite: 'lax',
+  secure: isProduction,
+  maxAge: 1000 * 60 * 60 * 4, // 4 hours
+};
 const allowedImageMimeTypes = new Set([
   'image/png',
   'image/jpeg',
@@ -222,13 +230,8 @@ app.use(
     resave: false,
     saveUninitialized: false,
     store: sessionStore,
-    cookie: {
-      httpOnly: true,
-      sameSite: 'lax',
-      secure: isProduction,
-      maxAge: 1000 * 60 * 60 * 4, // 4 hours
-    },
-    name: 'creatorflow.sid',
+    cookie: sessionCookieConfig,
+    name: SESSION_COOKIE_NAME,
   })
 );
 const csrfProtection = csurf({ cookie: false });
@@ -362,7 +365,11 @@ app.post('/api/auth/logout', requireAuth, csrfProtection, (req, res) => {
 
     if (req.session) {
       req.session.destroy(() => {
-        res.clearCookie('connect.sid');
+        res.clearCookie(SESSION_COOKIE_NAME, {
+          httpOnly: sessionCookieConfig.httpOnly,
+          sameSite: sessionCookieConfig.sameSite,
+          secure: sessionCookieConfig.secure,
+        });
         res.json({ ok: true });
       });
     } else {
@@ -370,6 +377,28 @@ app.post('/api/auth/logout', requireAuth, csrfProtection, (req, res) => {
     }
   });
 });
+
+if (isTest) {
+  app.post('/__test/login', (req, res) => {
+    const { userId, displayName } = req.body || {};
+    const user = {
+      id: userId || 'test-user',
+      displayName: displayName || 'Test User',
+      provider: 'test',
+      emails: [],
+      photos: [],
+    };
+
+    req.login(user, (err) => {
+      if (err) {
+        console.error('[ERROR] test login failed', err);
+        return res.status(500).json({ ok: false, error: 'Failed to establish session.' });
+      }
+
+      return res.json({ ok: true, user });
+    });
+  });
+}
 
 function requireAuth(req, res, next) {
   if (req.isAuthenticated && req.isAuthenticated()) {

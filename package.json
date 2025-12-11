@@ -13,7 +13,7 @@
   "build:static": "node scripts/sync-static.js",
   "build": "npm run build:static"
 }
-  },
+  }
   "dependencies": {
     "cors": "2.8.5",
     "csurf": "1.11.0",

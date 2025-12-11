@@ -41,6 +41,7 @@ import {
   generateWithVoice,
   validateContentForVoice,
 } from './lib/openai.js';
+
 dotenv.config();
 
 const app = express();
@@ -174,11 +175,113 @@ const connectorsCatalog = [
 const openAiModelService = OPEN_API_KEY
   ? createOpenAiModelService({ apiKey: OPEN_API_KEY, logger: console })
   : null;
+
 if (!OPEN_API_KEY) {
   console.warn(
     '[WARN] OPEN_API_KEY not set. /api/generate will return 500 until you configure it. Add OPEN_API_KEY (or the OPEN_AI_KEY repository secret) to resolve this.'
   );
-  
+} else if (!process.env.OPEN_API_KEY && process.env.OPEN_AI_KEY) {
+  console.info('[INFO] Using OPEN_AI_KEY repository secret as OPEN_API_KEY.');
+} else if (!process.env.OPEN_API_KEY && process.env.AI_API_KEY) {
+  console.warn('[WARN] Falling back to legacy AI_API_KEY environment variable.');
+}
+
+if (!PERPLEXITY_API_KEY) {
+  console.warn(
+    '[WARN] API_KEY (Perplexity) not set. /api/research endpoints will return 503 until you configure it.'
+  );
+} else {
+  console.info('[INFO] Perplexity API configured for deep research capabilities.');
+}
+
+const corsOrigins = process.env.CORS_ORIGIN
+  ? process.env.CORS_ORIGIN.split(',').map((origin) => origin.trim()).filter(Boolean)
+  : null;
+
+const defaultDevelopmentOrigins = ['http://localhost:3000'];
+const effectiveCorsOrigins =
+  corsOrigins && corsOrigins.length > 0
+    ? corsOrigins
+    : isProduction
+      ? []
+      : defaultDevelopmentOrigins;
+
+if (effectiveCorsOrigins.length === 0) {
+  throw new Error('CORS_ORIGIN is required in production to define the allowed origin allowlist.');
+}
+
+const allowedOrigins = new Set(effectiveCorsOrigins);
+
+const redisUrl = process.env.REDIS_URL;
+let sessionStore = undefined;
+
+if (redisUrl) {
+  const redisClient = createRedisClient({ url: redisUrl });
+  redisClient.on('error', (err) => {
+    console.error('[ERROR] Redis client error', err);
+  });
+
+  try {
+    await redisClient.connect();
+    sessionStore = new RedisStore({
+      client: redisClient,
+      prefix: 'creatorflow:sess:',
+      disableTouch: true,
+    });
+  } catch (error) {
+    if (isProduction) {
+      throw new Error('Failed to connect to Redis session store.');
+    }
+    console.warn('[WARN] Redis connection failed. Falling back to in-memory session store for local development.', error);
+  }
+} else if (isProduction) {
+  throw new Error('REDIS_URL is required in production for persistent session storage.');
+} else {
+  console.warn('[WARN] REDIS_URL not set. Falling back to in-memory session store for local development only.');
+}
+
+if (process.env.TRUST_PROXY === 'true') {
+  app.set('trust proxy', 1);
+}
+
+app.use(
+  cors({
+    origin(origin, callback) {
+      if (!origin) {
+        return callback(null, true);
+      }
+
+      if (allowedOrigins.has(origin)) {
+        return callback(null, true);
+      }
+
+      const error = new Error('CORS origin denied');
+      error.status = 403;
+      return callback(error);
+    },
+    credentials: true,
+  })
+);
+app.use(express.json({ limit: '1mb' }));
+app.use(express.urlencoded({ extended: false }));
+app.use(
+  session({
+    secret: SESSION_SECRET || 'development-session-secret',
+    resave: false,
+    saveUninitialized: false,
+    store: sessionStore,
+    cookie: sessionCookieConfig,
+    name: SESSION_COOKIE_NAME,
+  })
+);
+const csrfProtection = csurf({ cookie: false });
+app.use(passport.initialize());
+app.use(passport.session());
+
+// ============================================
+// Voice Routes
+// ============================================
+
 // GET /api/voices - List available voice personas
 app.get('/api/voices', (_req, res) => {
   const voices = getAvailableVoices();
@@ -307,103 +410,8 @@ app.post('/api/voices/validate', (req, res) => {
     prohibitedWordsFound: prohibitedWords,
     isValid: prohibitedWords.length === 0,
     contentLength: content.length,
-} else if (!process.env.OPEN_API_KEY && process.env.OPEN_AI_KEY) {
-  console.info('[INFO] Using OPEN_AI_KEY repository secret as OPEN_API_KEY.');
-} else if (!process.env.OPEN_API_KEY && process.env.AI_API_KEY) {
-  console.warn('[WARN] Falling back to legacy AI_API_KEY environment variable.');
-}
-
-if (!PERPLEXITY_API_KEY) {
-  console.warn(
-    '[WARN] API_KEY (Perplexity) not set. /api/research endpoints will return 503 until you configure it.'
-  );
-} else {
-  console.info('[INFO] Perplexity API configured for deep research capabilities.');
-}
-
-const corsOrigins = process.env.CORS_ORIGIN
-  ? process.env.CORS_ORIGIN.split(',').map((origin) => origin.trim()).filter(Boolean)
-  : null;
-
-const defaultDevelopmentOrigins = ['http://localhost:3000'];
-const effectiveCorsOrigins =
-  corsOrigins && corsOrigins.length > 0
-    ? corsOrigins
-    : isProduction
-      ? []
-      : defaultDevelopmentOrigins;
-
-if (effectiveCorsOrigins.length === 0) {
-  throw new Error('CORS_ORIGIN is required in production to define the allowed origin allowlist.');
-}
-
-const allowedOrigins = new Set(effectiveCorsOrigins);
-
-const redisUrl = process.env.REDIS_URL;
-let sessionStore = undefined;
-
-if (redisUrl) {
-  const redisClient = createRedisClient({ url: redisUrl });
-  redisClient.on('error', (err) => {
-    console.error('[ERROR] Redis client error', err);
   });
-
-  try {
-    await redisClient.connect();
-    sessionStore = new RedisStore({
-      client: redisClient,
-      prefix: 'creatorflow:sess:',
-      disableTouch: true,
-    });
-  } catch (error) {
-    if (isProduction) {
-      throw new Error('Failed to connect to Redis session store.');
-    }
-    console.warn('[WARN] Redis connection failed. Falling back to in-memory session store for local development.', error);
-  }
-} else if (isProduction) {
-  throw new Error('REDIS_URL is required in production for persistent session storage.');
-} else {
-  console.warn('[WARN] REDIS_URL not set. Falling back to in-memory session store for local development only.');
-}
-
-if (process.env.TRUST_PROXY === 'true') {
-  app.set('trust proxy', 1);
-}
-
-app.use(
-  cors({
-    origin(origin, callback) {
-      if (!origin) {
-        return callback(null, true);
-      }
-
-      if (allowedOrigins.has(origin)) {
-        return callback(null, true);
-      }
-
-      const error = new Error('CORS origin denied');
-      error.status = 403;
-      return callback(error);
-    },
-    credentials: true,
-  })
-);
-app.use(express.json({ limit: '1mb' }));
-app.use(express.urlencoded({ extended: false }));
-app.use(
-  session({
-    secret: SESSION_SECRET || 'development-session-secret',
-    resave: false,
-    saveUninitialized: false,
-    store: sessionStore,
-    cookie: sessionCookieConfig,
-    name: SESSION_COOKIE_NAME,
-  })
-);
-const csrfProtection = csurf({ cookie: false });
-app.use(passport.initialize());
-app.use(passport.session());
+});
 
 // ============================================
 // Passport Configuration
@@ -715,7 +723,7 @@ function safeParseJsonPayload(text) {
 
   candidates.add(trimmed);
 
-  const startIndex = trimmed.search(/[[{]/);
+  const startIndex = trimmed.search(/[\[{]/);
   if (startIndex >= 0) {
     const fromFirstBracket = trimmed.slice(startIndex).trim();
     if (fromFirstBracket) {
@@ -1340,583 +1348,16 @@ app.post('/api/integrations/openai/test', requireAuth, csrfProtection, async (_r
   await sendOpenAiTestResponse(res);
 });
 
-app.post(
-  '/api/integrations/openai/videos',
-  requireAuth,
-  csrfProtection,
-  upload.single('input_reference'),
-  async (req, res) => {
-    if (!OPEN_API_KEY) {
-      return res
-        .status(503)
-        .json({ ok: false, error: 'OpenAI integration is not configured.' });
-    }
-
-    const validationError = validateUploadedFile(
-      req.file,
-      allowedVideoMimeTypes,
-      'input_reference'
-    );
-    if (validationError) {
-      return res.status(400).json({ ok: false, error: validationError });
-    }
-
-    const validation = createVideoSchema.safeParse({
-      prompt: req.body?.prompt,
-      model: req.body?.model,
-      seconds: req.body?.seconds,
-      size: req.body?.size,
-      quality: req.body?.quality,
-    });
-
-    if (!validation.success) {
-      const issue = validation.error.issues[0];
-      return res.status(400).json({ ok: false, error: issue?.message || 'Invalid payload.' });
-    }
-
-    try {
-      const video = await createVideoJob({
-        apiKey: OPEN_API_KEY,
-        ...validation.data,
-        inputReference: normaliseMulterFile(req.file),
-      });
-
-      return res.json({ ok: true, video });
-    } catch (error) {
-      console.error('[ERROR] /api/integrations/openai/videos', error);
-      const status = normaliseErrorStatus(error);
-      return res.status(status).json({
-        ok: false,
-        error: extractOpenAiErrorMessage(error, 'Failed to create video job.'),
-      });
-    }
-  }
-);
-
-app.post(
-  '/api/integrations/openai/videos/:videoId/remix',
-  requireAuth,
-  csrfProtection,
-  async (req, res) => {
-    if (!OPEN_API_KEY) {
-      return res
-        .status(503)
-        .json({ ok: false, error: 'OpenAI integration is not configured.' });
-    }
-
-    const validation = remixVideoSchema.safeParse({ prompt: req.body?.prompt });
-    if (!validation.success) {
-      const issue = validation.error.issues[0];
-      return res.status(400).json({ ok: false, error: issue?.message || 'Invalid payload.' });
-    }
-
-    try {
-      const video = await remixVideoJob({
-        apiKey: OPEN_API_KEY,
-        videoId: req.params.videoId,
-        prompt: validation.data.prompt,
-      });
-      return res.json({ ok: true, video });
-    } catch (error) {
-      console.error('[ERROR] /api/integrations/openai/videos/:videoId/remix', error);
-      const status = normaliseErrorStatus(error);
-      return res.status(status).json({
-        ok: false,
-        error: extractOpenAiErrorMessage(error, 'Failed to remix video.'),
-      });
-    }
-  }
-);
-
-app.get('/api/integrations/openai/videos', requireAuth, async (req, res) => {
-  if (!OPEN_API_KEY) {
-    return res
-      .status(503)
-      .json({ ok: false, error: 'OpenAI integration is not configured.' });
-  }
-
-  const validation = listVideosSchema.safeParse({
-    after: Array.isArray(req.query.after) ? req.query.after[0] : req.query.after,
-    limit: Array.isArray(req.query.limit) ? req.query.limit[0] : req.query.limit,
-    order: Array.isArray(req.query.order) ? req.query.order[0] : req.query.order,
-  });
-
-  if (!validation.success) {
-    const issue = validation.error.issues[0];
-    return res
-      .status(400)
-      .json({ ok: false, error: issue?.message || 'Invalid query parameters.' });
-  }
-
-  try {
-    const videos = await listVideoJobs({
-      apiKey: OPEN_API_KEY,
-      ...validation.data,
-    });
-    return res.json({ ok: true, videos });
-  } catch (error) {
-    console.error('[ERROR] /api/integrations/openai/videos', error);
-    const status = normaliseErrorStatus(error);
-    return res.status(status).json({
-      ok: false,
-      error: extractOpenAiErrorMessage(error, 'Failed to list videos.'),
-    });
-  }
-});
-
-app.get('/api/integrations/openai/videos/:videoId', requireAuth, async (req, res) => {
-  if (!OPEN_API_KEY) {
-    return res
-      .status(503)
-      .json({ ok: false, error: 'OpenAI integration is not configured.' });
-  }
-
-  try {
-    const video = await retrieveVideoJob({
-      apiKey: OPEN_API_KEY,
-      videoId: req.params.videoId,
-    });
-    return res.json({ ok: true, video });
-  } catch (error) {
-    console.error('[ERROR] /api/integrations/openai/videos/:videoId', error);
-    const status = normaliseErrorStatus(error);
-    return res.status(status).json({
-      ok: false,
-      error: extractOpenAiErrorMessage(error, 'Failed to retrieve video.'),
-    });
-  }
-});
-
-app.delete('/api/integrations/openai/videos/:videoId', requireAuth, async (req, res) => {
-  if (!OPEN_API_KEY) {
-    return res
-      .status(503)
-      .json({ ok: false, error: 'OpenAI integration is not configured.' });
-  }
-
-  try {
-    const response = await deleteVideoJob({
-      apiKey: OPEN_API_KEY,
-      videoId: req.params.videoId,
-    });
-    return res.json({ ok: true, video: response });
-  } catch (error) {
-    console.error('[ERROR] DELETE /api/integrations/openai/videos/:videoId', error);
-    const status = normaliseErrorStatus(error);
-    return res.status(status).json({
-      ok: false,
-      error: extractOpenAiErrorMessage(error, 'Failed to delete video.'),
-    });
-  }
-});
-
-app.get('/api/integrations/openai/videos/:videoId/content', requireAuth, async (req, res) => {
-  if (!OPEN_API_KEY) {
-    return res
-      .status(503)
-      .json({ ok: false, error: 'OpenAI integration is not configured.' });
-  }
-
-  const validation = downloadVariantSchema.safeParse({
-    variant: Array.isArray(req.query.variant) ? req.query.variant[0] : req.query.variant,
-  });
-
-  if (!validation.success) {
-    const issue = validation.error.issues[0];
-    return res
-      .status(400)
-      .json({ ok: false, error: issue?.message || 'Invalid query parameters.' });
-  }
-
-  try {
-    const result = await downloadVideoContent({
-      apiKey: OPEN_API_KEY,
-      videoId: req.params.videoId,
-      variant: validation.data.variant,
-    });
-
-    if (result.headers['content-type']) {
-      res.setHeader('Content-Type', result.headers['content-type']);
-    }
-    if (result.headers['content-disposition']) {
-      res.setHeader('Content-Disposition', result.headers['content-disposition']);
-    }
-    res.setHeader('Content-Length', String(result.buffer.length));
-
-    return res.status(result.status).send(result.buffer);
-  } catch (error) {
-    console.error('[ERROR] GET /api/integrations/openai/videos/:videoId/content', error);
-    const status = normaliseErrorStatus(error);
-    return res.status(status).json({
-      ok: false,
-      error: extractOpenAiErrorMessage(error, 'Failed to download video content.'),
-    });
-  }
-});
-
-app.post(
-  '/api/integrations/openai/images/generations',
-  requireAuth,
-  csrfProtection,
-  async (req, res) => {
-    if (!OPEN_API_KEY) {
-      return res
-        .status(503)
-        .json({ ok: false, error: 'OpenAI integration is not configured.' });
-    }
-
-    const validation = imageGenerationSchema.safeParse(req.body || {});
-    if (!validation.success) {
-      const issue = validation.error.issues[0];
-      return res.status(400).json({ ok: false, error: issue?.message || 'Invalid payload.' });
-    }
-
-    try {
-      const payload = toSnakeCasePayload(validation.data);
-      const response = await createImageGeneration({
-        apiKey: OPEN_API_KEY,
-        payload,
-      });
-
-      return res.json({ ok: true, data: response });
-    } catch (error) {
-      console.error('[ERROR] /api/integrations/openai/images/generations', error);
-      const status = normaliseErrorStatus(error);
-      return res.status(status).json({
-        ok: false,
-        error: extractOpenAiErrorMessage(error, 'Failed to generate image.'),
-      });
-    }
-  }
-);
-
-app.post(
-  '/api/integrations/openai/images/edits',
-  requireAuth,
-  csrfProtection,
-  upload.fields([
-    { name: 'image', maxCount: 16 },
-    { name: 'mask', maxCount: 1 },
-  ]),
-  async (req, res) => {
-    if (!OPEN_API_KEY) {
-      return res
-        .status(503)
-        .json({ ok: false, error: 'OpenAI integration is not configured.' });
-    }
-
-    const validation = imageEditOptionsSchema.safeParse(req.body || {});
-    if (!validation.success) {
-      const issue = validation.error.issues[0];
-      return res.status(400).json({ ok: false, error: issue?.message || 'Invalid payload.' });
-    }
-
-    const rawImageFiles = Array.isArray(req.files?.image) ? req.files.image : [];
-    if (!rawImageFiles || rawImageFiles.length === 0) {
-      return res.status(400).json({ ok: false, error: 'At least one image file is required.' });
-    }
-
-    const imageValidationError = validateUploadedFiles(
-      rawImageFiles,
-      allowedImageMimeTypes,
-      'image'
-    );
-    if (imageValidationError) {
-      return res.status(400).json({ ok: false, error: imageValidationError });
-    }
-
-    const rawMaskFile = Array.isArray(req.files?.mask) ? req.files.mask[0] : null;
-    const maskValidationError = validateUploadedFile(rawMaskFile, allowedImageMimeTypes, 'mask');
-    if (maskValidationError) {
-      return res.status(400).json({ ok: false, error: maskValidationError });
-    }
-
-    const imageFiles = rawImageFiles.map(normaliseMulterFile);
-
-    try {
-      const response = await createImageEdit({
-        apiKey: OPEN_API_KEY,
-        images: imageFiles,
-        mask: normaliseMulterFile(rawMaskFile),
-        ...validation.data,
-      });
-
-      return res.json({ ok: true, data: response });
-    } catch (error) {
-      console.error('[ERROR] /api/integrations/openai/images/edits', error);
-      const status = normaliseErrorStatus(error);
-      return res.status(status).json({
-        ok: false,
-        error: extractOpenAiErrorMessage(error, 'Failed to edit image.'),
-      });
-    }
-  }
-);
-
-app.post(
-  '/api/integrations/openai/images/variations',
-  requireAuth,
-  csrfProtection,
-  upload.single('image'),
-  async (req, res) => {
-    if (!OPEN_API_KEY) {
-      return res
-        .status(503)
-        .json({ ok: false, error: 'OpenAI integration is not configured.' });
-    }
-
-    const validationError = validateUploadedFile(req.file, allowedImageMimeTypes, 'image');
-    if (validationError) {
-      return res.status(400).json({ ok: false, error: validationError });
-    }
-
-    const validation = imageVariationOptionsSchema.safeParse(req.body || {});
-    if (!validation.success) {
-      const issue = validation.error.issues[0];
-      return res.status(400).json({ ok: false, error: issue?.message || 'Invalid payload.' });
-    }
-
-    try {
-      const response = await createImageVariation({
-        apiKey: OPEN_API_KEY,
-        image: normaliseMulterFile(req.file),
-        ...validation.data,
-      });
-
-      return res.json({ ok: true, data: response });
-    } catch (error) {
-      console.error('[ERROR] /api/integrations/openai/images/variations', error);
-      const status = normaliseErrorStatus(error);
-      return res.status(status).json({
-        ok: false,
-        error: extractOpenAiErrorMessage(error, 'Failed to create image variation.'),
-      });
-    }
-  }
-);
-
 // ============================================
-// Perplexity Deep Research Routes
-// ============================================
-
-app.post('/api/research', requireAuth, csrfProtection, async (req, res) => {
-  if (!PERPLEXITY_API_KEY) {
-    return res.status(503).json({
-      ok: false,
-      error:
-        'Perplexity integration is not configured. Add API_KEY to enable deep research functionality.',
-    });
-  }
-
-  const { query, topic, purpose, maxTokens } = req.body || {};
-
-  const searchQuery = query || topic;
-  if (!searchQuery || typeof searchQuery !== 'string' || searchQuery.trim().length === 0) {
-    return res.status(400).json({
-      ok: false,
-      error: 'query or topic is required and must be a non-empty string.',
-    });
-  }
-
-  if (searchQuery.length > 2000) {
-    return res.status(400).json({
-      ok: false,
-      error: 'query/topic must be 2000 characters or less.',
-    });
-  }
-
-  try {
-    const research = await performDeepResearch({
-      apiKey: PERPLEXITY_API_KEY,
-      query: buildResearchPrompt(searchQuery, purpose),
-      maxTokens: maxTokens || 2000,
-    });
-
-    return res.json({
-      ok: true,
-      topic: searchQuery,
-      purpose: purpose || 'general research',
-      research,
-    });
-  } catch (err) {
-    console.error('[ERROR] /api/research', err);
-    const status = err?.status || 500;
-    const errorMsg = err.message || 'Failed to perform research.';
-    return res.status(status).json({
-      ok: false,
-      error: errorMsg.slice(0, 500),
-    });
-  }
-});
-
-app.post('/api/research/competitive', requireAuth, csrfProtection, async (req, res) => {
-  if (!PERPLEXITY_API_KEY) {
-    return res.status(503).json({
-      ok: false,
-      error: 'Perplexity integration is not configured.',
-    });
-  }
-
-  const { contentTopic, competitor, platform } = req.body || {};
-
-  if (!contentTopic || typeof contentTopic !== 'string' || contentTopic.trim().length === 0) {
-    return res.status(400).json({
-      ok: false,
-      error: 'contentTopic is required.',
-    });
-  }
-
-  if (contentTopic.length > 500) {
-    return res.status(400).json({
-      ok: false,
-      error: 'contentTopic must be 500 characters or less.',
-    });
-  }
-
-  try {
-    const analysis = await analyzeCompetitiveContent({
-      apiKey: PERPLEXITY_API_KEY,
-      contentTopic: contentTopic.trim(),
-      competitor: competitor ? String(competitor).trim() : undefined,
-      platform: platform ? String(platform).trim() : undefined,
-    });
-
-    return res.json({
-      ok: true,
-      contentTopic,
-      competitor: competitor || null,
-      platform: platform || null,
-      analysis,
-    });
-  } catch (err) {
-    console.error('[ERROR] /api/research/competitive', err);
-    const status = err?.status || 500;
-    const errorMsg = err.message || 'Failed to analyze competitive content.';
-    return res.status(status).json({
-      ok: false,
-      error: errorMsg.slice(0, 500),
-    });
-  }
-});
-
-app.post('/api/research/audience', requireAuth, csrfProtection, async (req, res) => {
-  if (!PERPLEXITY_API_KEY) {
-    return res.status(503).json({
-      ok: false,
-      error: 'Perplexity integration is not configured.',
-    });
-  }
-
-  const { audience, platform, niche } = req.body || {};
-
-  if (!audience || typeof audience !== 'string' || audience.trim().length === 0) {
-    return res.status(400).json({
-      ok: false,
-      error: 'audience is required.',
-    });
-  }
-
-  if (audience.length > 500) {
-    return res.status(400).json({
-      ok: false,
-      error: 'audience must be 500 characters or less.',
-    });
-  }
-
-  try {
-    const insights = await getAudienceInsights({
-      apiKey: PERPLEXITY_API_KEY,
-      audience: audience.trim(),
-      platform: platform ? String(platform).trim() : undefined,
-      niche: niche ? String(niche).trim() : undefined,
-    });
-
-    return res.json({
-      ok: true,
-      audience,
-      platform: platform || null,
-      niche: niche || null,
-      insights,
-    });
-  } catch (err) {
-    console.error('[ERROR] /api/research/audience', err);
-    const status = err?.status || 500;
-    const errorMsg = err.message || 'Failed to get audience insights.';
-    return res.status(status).json({
-      ok: false,
-      error: errorMsg.slice(0, 500),
-    });
-  }
-});
-
-app.get('/api/integrations/perplexity/status', (_req, res) => {
-  res.json({
-    ok: true,
-    provider: 'perplexity',
-    configured: Boolean(PERPLEXITY_API_KEY),
-    capabilities: ['deep_research', 'competitive_analysis', 'audience_insights', 'trend_research'],
-  });
-});
-
-app.post('/api/integrations/perplexity/test', requireAuth, csrfProtection, async (req, res) => {
-  if (!PERPLEXITY_API_KEY) {
-    return res.status(503).json({
-      ok: false,
-      error: 'Perplexity integration is not configured.',
-    });
-  }
-
-  try {
-    const testResult = await performDeepResearch({
-      apiKey: PERPLEXITY_API_KEY,
-      query: 'What are the latest trends in content creation? Provide 3 key insights.',
-      maxTokens: 500,
-    });
-
-    if (!testResult || testResult.trim().length === 0) {
-      throw new Error('Empty response from Perplexity API.');
-    }
-
-    return res.json({
-      ok: true,
-      message: 'Perplexity integration is working correctly.',
-      sampleResult: testResult.slice(0, 300),
-    });
-  } catch (err) {
-    console.error('[ERROR] Perplexity test failed', err);
-    const status = err?.status || 500;
-    return res.status(status).json({
-      ok: false,
-      error: err.message || 'Perplexity integration test failed.',
-    });
-  }
-});
-
-// ============================================
-// Static File Serving
+// Serve Static Files
 // ============================================
 
 app.use(express.static(publicDirectory));
 
-app.get('/', (_req, res) => {
-  res.sendFile(path.join(publicDirectory, 'index.html'));
-});
-
 // ============================================
-// Error Handling & Server Start
+// Start Server
 // ============================================
-
-app.use((err, _req, res, _next) => {
-  console.error('[ERROR]', err);
-  const status = err.status || 500;
-  const message = err.message || 'Internal server error.';
-  res.status(status).json({ ok: false, error: message });
-});
 
 app.listen(PORT, () => {
   console.log(`[INFO] Server running on http://localhost:${PORT}`);
-  console.log(`[INFO] Node environment: ${NODE_ENV}`);
-  console.log(
-    `[INFO] Configured auth providers: ${configuredAuthProviders.length > 0 ? configuredAuthProviders.join(', ') : 'none'}`
-  );
 });

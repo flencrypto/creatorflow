@@ -35,7 +35,12 @@ import {
   analyzeCompetitiveContent,
   getAudienceInsights,
 } from './lib/perplexity.js';
-
+import {
+  VOICE_PERSONAS,
+  getAvailableVoices,
+  generateWithVoice,
+  validateContentForVoice,
+} from './lib/openai.js';
 dotenv.config();
 
 const app = express();
@@ -173,6 +178,135 @@ if (!OPEN_API_KEY) {
   console.warn(
     '[WARN] OPEN_API_KEY not set. /api/generate will return 500 until you configure it. Add OPEN_API_KEY (or the OPEN_AI_KEY repository secret) to resolve this.'
   );
+  
+// GET /api/voices - List available voice personas
+app.get('/api/voices', (_req, res) => {
+  const voices = getAvailableVoices();
+  res.json({
+    ok: true,
+    voices,
+    count: voices.length,
+  });
+});
+
+// POST /api/generate/with-voice - Generate content with specific voice
+app.post('/api/generate/with-voice', async (req, res) => {
+  if (!OPEN_API_KEY) {
+    return res.status(503).json({
+      ok: false,
+      error:
+        'OpenAI integration is not configured. Add OPEN_API_KEY (or set the OPEN_AI_KEY secret) on the server to enable content generation.',
+    });
+  }
+
+  const { input, voiceId, template, platform, tone, customSystemPrompt } = req.body || {};
+
+  // Validate voice
+  if (!voiceId || !VOICE_PERSONAS[voiceId]) {
+    return res.status(400).json({
+      ok: false,
+      error: `Invalid voice ID. Available voices: ${Object.keys(VOICE_PERSONAS).join(', ')}`,
+    });
+  }
+
+  // Validate input
+  if (!input || typeof input !== 'string' || input.trim().length === 0) {
+    return res.status(400).json({
+      ok: false,
+      error: 'input is required and must be a non-empty string.',
+    });
+  }
+
+  if (input.length > 5000) {
+    return res.status(400).json({
+      ok: false,
+      error: 'input must be 5000 characters or less.',
+    });
+  }
+
+  try {
+    let prompt = input;
+
+    // If template is provided, use it to structure the prompt
+    if (template) {
+      const allowedTemplates = ['post', 'script', 'caption', 'article', 'freeform'];
+      if (!allowedTemplates.includes(template)) {
+        return res.status(400).json({
+          ok: false,
+          error: `Invalid template. Available: ${allowedTemplates.join(', ')}`,
+        });
+      }
+
+      if (template !== 'freeform') {
+        prompt = buildPrompt({ template, input, platform, tone });
+      }
+    }
+
+    // Generate with voice persona
+    const content = await generateWithVoice({
+      apiKey: OPEN_API_KEY,
+      prompt,
+      voiceId,
+      overrides: {
+        temperature: tone === 'creative' ? 0.9 : 0.7,
+      },
+    });
+
+    // Validate against prohibited words if applicable
+    const persona = VOICE_PERSONAS[voiceId];
+    const prohibitedWordsFound = validateContentForVoice(content, voiceId);
+
+    return res.json({
+      ok: true,
+      voiceId,
+      voice: persona.name,
+      template: template || null,
+      platform: platform || null,
+      content,
+      warnings: prohibitedWordsFound.length > 0 
+        ? {
+            message: 'Content contains prohibited words for this voice',
+            words: prohibitedWordsFound,
+          }
+        : null,
+    });
+  } catch (err) {
+    console.error('[ERROR] /api/generate/with-voice', err);
+    return res.status(500).json({
+      ok: false,
+      error: err.message || 'Failed to generate content with voice.',
+    });
+  }
+});
+
+// POST /api/voices/validate - Validate content against a voice's prohibited words
+app.post('/api/voices/validate', (req, res) => {
+  const { content, voiceId } = req.body || {};
+
+  if (!voiceId || !VOICE_PERSONAS[voiceId]) {
+    return res.status(400).json({
+      ok: false,
+      error: `Invalid voice ID. Available voices: ${Object.keys(VOICE_PERSONAS).join(', ')}`,
+    });
+  }
+
+  if (!content || typeof content !== 'string') {
+    return res.status(400).json({
+      ok: false,
+      error: 'content is required and must be a string.',
+    });
+  }
+
+  const prohibitedWords = validateContentForVoice(content, voiceId);
+  const persona = VOICE_PERSONAS[voiceId];
+
+  res.json({
+    ok: true,
+    voiceId,
+    voice: persona.name,
+    prohibitedWordsFound: prohibitedWords,
+    isValid: prohibitedWords.length === 0,
+    contentLength: content.length,
 } else if (!process.env.OPEN_API_KEY && process.env.OPEN_AI_KEY) {
   console.info('[INFO] Using OPEN_AI_KEY repository secret as OPEN_API_KEY.');
 } else if (!process.env.OPEN_API_KEY && process.env.AI_API_KEY) {

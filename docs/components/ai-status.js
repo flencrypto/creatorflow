@@ -22,6 +22,7 @@ class AIStatus extends HTMLElement {
         super();
         this.handleStorageChange = this.handleStorageChange.bind(this);
         this.abortController = null;
+        this.checkInterval = null;
     }
 
     connectedCallback() {
@@ -31,15 +32,28 @@ class AIStatus extends HTMLElement {
 
         this.render();
         this.setStatus('disabled', 'AI: Not Configured');
+        
+        // Initial check
         this.checkStatus().catch(() => {
-            // Errors are surfaced through setStatus; no-op here to avoid noisy console logs.
+            // Errors are handled via setStatus
         });
+
+        // Periodic health check every 30 seconds
+        this.checkInterval = setInterval(() => {
+            this.checkStatus().catch(() => {
+                // Errors are handled via setStatus
+            });
+        }, 30000);
 
         window.addEventListener('storage', this.handleStorageChange);
     }
 
     disconnectedCallback() {
         window.removeEventListener('storage', this.handleStorageChange);
+        if (this.checkInterval) {
+            clearInterval(this.checkInterval);
+            this.checkInterval = null;
+        }
         if (this.abortController) {
             this.abortController.abort();
             this.abortController = null;
@@ -115,12 +129,6 @@ class AIStatus extends HTMLElement {
     }
 
     async checkStatus() {
-        const apiKey = localStorage.getItem('openai_api_key');
-        if (!apiKey) {
-            this.setStatus('disabled', 'AI: Not Configured');
-            return;
-        }
-
         this.setStatus('checking', 'AI: Checking connection...');
 
         if (this.abortController) {
@@ -130,10 +138,8 @@ class AIStatus extends HTMLElement {
         this.abortController = controller;
 
         try {
-            const response = await fetch('https://api.openai.com/v1/models', {
-                headers: {
-                    Authorization: `Bearer ${apiKey}`,
-                },
+            const response = await fetch('/api/ai/health', {
+                method: 'GET',
                 signal: controller.signal,
             });
 
@@ -141,31 +147,13 @@ class AIStatus extends HTMLElement {
                 return;
             }
 
-            if (response.ok) {
-                this.setStatus('connected', 'AI: Connected');
+            if (!response.ok) {
+                this.setStatus('disconnected', 'AI: Connection Failed');
                 return;
             }
 
-            this.setStatus('disconnected', 'AI: Connection Failed');
-        } catch (error) {
+            const data = await response.json();
+
             if (controller.signal.aborted || this.abortController !== controller) {
                 return;
             }
-            this.setStatus('disconnected', 'AI: Connection Failed');
-        } finally {
-            if (this.abortController === controller) {
-                this.abortController = null;
-            }
-        }
-    }
-
-    handleStorageChange(event) {
-        if (event.key === 'openai_api_key') {
-            this.checkStatus().catch(() => {
-                this.setStatus('disconnected', 'AI: Connection Failed');
-            });
-        }
-    }
-}
-
-customElements.define('ai-status', AIStatus);

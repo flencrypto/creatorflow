@@ -36,7 +36,6 @@ import {
   getAudienceInsights,
 } from './lib/perplexity.js';
 
-
 dotenv.config();
 
 const app = express();
@@ -44,7 +43,6 @@ const PORT = process.env.PORT || 3000;
 const NODE_ENV = process.env.NODE_ENV || 'development';
 const isProduction = NODE_ENV === 'production';
 const isTest = NODE_ENV === 'test';
-const apiKey = process.env.API_KEY;
 
 const moduleFilename = fileURLToPath(import.meta.url);
 const moduleDirectory = path.dirname(moduleFilename);
@@ -114,6 +112,8 @@ if (!process.env.OPEN_API_KEY && process.env.OPEN_AI_KEY) {
 }
 
 const OPEN_API_KEY = resolvedOpenApiKey;
+const PERPLEXITY_API_KEY = process.env.API_KEY; // Your Perplexity API key
+
 const connectorsCatalog = [
   {
     id: 'openai-content-generator',
@@ -147,6 +147,23 @@ const connectorsCatalog = [
     actions: { testable: true, suggestions: true },
     requires: ['OPEN_API_KEY'],
   },
+  {
+    id: 'perplexity-research',
+    provider: 'perplexity',
+    name: 'Perplexity Deep Research',
+    category: 'AI Insights',
+    description:
+      'Conduct real-time research on trends, audience insights, and competitive analysis with web access.',
+    features: [
+      'Real-time web research',
+      'Competitive content analysis',
+      'Audience insights and trends',
+      'Cited sources',
+    ],
+    documentationUrl: 'https://docs.perplexity.ai',
+    actions: { testable: true, suggestions: false },
+    requires: ['API_KEY'],
+  },
 ];
 
 const openAiModelService = OPEN_API_KEY
@@ -160,6 +177,14 @@ if (!OPEN_API_KEY) {
   console.info('[INFO] Using OPEN_AI_KEY repository secret as OPEN_API_KEY.');
 } else if (!process.env.OPEN_API_KEY && process.env.AI_API_KEY) {
   console.warn('[WARN] Falling back to legacy AI_API_KEY environment variable.');
+}
+
+if (!PERPLEXITY_API_KEY) {
+  console.warn(
+    '[WARN] API_KEY (Perplexity) not set. /api/research endpoints will return 503 until you configure it.'
+  );
+} else {
+  console.info('[INFO] Perplexity API configured for deep research capabilities.');
 }
 
 const corsOrigins = process.env.CORS_ORIGIN
@@ -245,216 +270,11 @@ app.use(
 const csrfProtection = csurf({ cookie: false });
 app.use(passport.initialize());
 app.use(passport.session());
-const PERPLEXITY_API_KEY = process.env.API_KEY; // Your Perplexity API key
 
-if (!PERPLEXITY_API_KEY) {
-  console.warn(
-    '[WARN] API_KEY (Perplexity) not set. /api/research endpoints will return 503 until you configure it.'
-  );
-} else {
-  console.info('[INFO] Perplexity API configured for deep research capabilities.');
-}
+// ============================================
+// Passport Configuration
+// ============================================
 
-// POST /api/research - Perform deep research on any topic
-app.post('/api/research', requireAuth, csrfProtection, async (req, res) => {
-  if (!PERPLEXITY_API_KEY) {
-    return res.status(503).json({
-      ok: false,
-      error:
-        'Perplexity integration is not configured. Add API_KEY to enable deep research functionality.',
-    });
-  }
-
-  const { query, topic, purpose, maxTokens } = req.body || {};
-
-  // Validate input
-  const searchQuery = query || topic;
-  if (!searchQuery || typeof searchQuery !== 'string' || searchQuery.trim().length === 0) {
-    return res.status(400).json({
-      ok: false,
-      error: 'query or topic is required and must be a non-empty string.',
-    });
-  }
-
-  if (searchQuery.length > 2000) {
-    return res.status(400).json({
-      ok: false,
-      error: 'query/topic must be 2000 characters or less.',
-    });
-  }
-
-  try {
-    const research = await performDeepResearch({
-      apiKey: PERPLEXITY_API_KEY,
-      query: buildResearchPrompt(searchQuery, purpose),
-      maxTokens: maxTokens || 2000,
-    });
-
-    return res.json({
-      ok: true,
-      topic: searchQuery,
-      purpose: purpose || 'general research',
-      research,
-    });
-  } catch (err) {
-    console.error('[ERROR] /api/research', err);
-    const status = err?.status || 500;
-    const errorMsg = err.message || 'Failed to perform research.';
-    return res.status(status).json({
-      ok: false,
-      error: errorMsg.slice(0, 500),
-    });
-  }
-});
-
-// POST /api/research/competitive - Analyze competitive content landscape
-app.post('/api/research/competitive', requireAuth, csrfProtection, async (req, res) => {
-  if (!PERPLEXITY_API_KEY) {
-    return res.status(503).json({
-      ok: false,
-      error: 'Perplexity integration is not configured.',
-    });
-  }
-
-  const { contentTopic, competitor, platform } = req.body || {};
-
-  if (!contentTopic || typeof contentTopic !== 'string' || contentTopic.trim().length === 0) {
-    return res.status(400).json({
-      ok: false,
-      error: 'contentTopic is required.',
-    });
-  }
-
-  if (contentTopic.length > 500) {
-    return res.status(400).json({
-      ok: false,
-      error: 'contentTopic must be 500 characters or less.',
-    });
-  }
-
-  try {
-    const analysis = await analyzeCompetitiveContent({
-      apiKey: PERPLEXITY_API_KEY,
-      contentTopic: contentTopic.trim(),
-      competitor: competitor ? String(competitor).trim() : undefined,
-      platform: platform ? String(platform).trim() : undefined,
-    });
-
-    return res.json({
-      ok: true,
-      contentTopic,
-      competitor: competitor || null,
-      platform: platform || null,
-      analysis,
-    });
-  } catch (err) {
-    console.error('[ERROR] /api/research/competitive', err);
-    const status = err?.status || 500;
-    const errorMsg = err.message || 'Failed to analyze competitive content.';
-    return res.status(status).json({
-      ok: false,
-      error: errorMsg.slice(0, 500),
-    });
-  }
-});
-
-// POST /api/research/audience - Get audience insights
-app.post('/api/research/audience', requireAuth, csrfProtection, async (req, res) => {
-  if (!PERPLEXITY_API_KEY) {
-    return res.status(503).json({
-      ok: false,
-      error: 'Perplexity integration is not configured.',
-    });
-  }
-
-  const { audience, platform, niche } = req.body || {};
-
-  if (!audience || typeof audience !== 'string' || audience.trim().length === 0) {
-    return res.status(400).json({
-      ok: false,
-      error: 'audience is required.',
-    });
-  }
-
-  if (audience.length > 500) {
-    return res.status(400).json({
-      ok: false,
-      error: 'audience must be 500 characters or less.',
-    });
-  }
-
-  try {
-    const insights = await getAudienceInsights({
-      apiKey: PERPLEXITY_API_KEY,
-      audience: audience.trim(),
-      platform: platform ? String(platform).trim() : undefined,
-      niche: niche ? String(niche).trim() : undefined,
-    });
-
-    return res.json({
-      ok: true,
-      audience,
-      platform: platform || null,
-      niche: niche || null,
-      insights,
-    });
-  } catch (err) {
-    console.error('[ERROR] /api/research/audience', err);
-    const status = err?.status || 500;
-    const errorMsg = err.message || 'Failed to get audience insights.';
-    return res.status(status).json({
-      ok: false,
-      error: errorMsg.slice(0, 500),
-    });
-  }
-});
-
-// GET /api/integrations/perplexity/status - Check Perplexity integration status
-app.get('/api/integrations/perplexity/status', (_req, res) => {
-  res.json({
-    ok: true,
-    provider: 'perplexity',
-    configured: Boolean(PERPLEXITY_API_KEY),
-    capabilities: [
-      'deep_research',
-      'competitive_analysis',
-      'audience_insights',
-      'trend_research',
-    ],
-  });
-});
-
-// POST /api/integrations/perplexity/test - Test Perplexity integration
-app.post('/api/integrations/perplexity/test', requireAuth, csrfProtection, async (req, res) => {
-  if (!PERPLEXITY_API_KEY) {
-    return res.status(503).json({
-      ok: false,
-      error: 'Perplexity integration is not configured.',
-    });
-  }
-
-  try {
-    const testResult = await performDeepResearch({
-      apiKey: PERPLEXITY_API_KEY,
-      query: 'What are the latest trends in content creation? Provide 3 key insights.',
-      maxTokens: 500,
-    });
-
-    if (!testResult || testResult.trim().length === 0) {
-      throw new Error('Empty response from Perplexity API.');
-    }
-
-    return res.json({
-      ok: true,
-      message: 'Perplexity integration is working correctly.',
-      sampleResult: testResult.slice(0, 300),
-    });
-  } catch (err) {
-    console.error('[ERROR] Perplexity test failed', err);
-    const status = err?.status || 500;
-    return res.status(status).json({
-      ok: false,
-      error: err.message || 'Perplexity integration test failed.',
 function mapPassportProfile(profile) {
   return {
     id: profile.id,
@@ -476,6 +296,36 @@ passport.serializeUser((user, done) => {
 passport.deserializeUser((obj, done) => {
   done(null, obj);
 });
+
+function issueOAuthStateAndAuthenticate(provider, options) {
+  return (req, res, next) => {
+    const state = crypto.randomBytes(32).toString('hex');
+    if (!req.session[oauthStateSessionKey]) {
+      req.session[oauthStateSessionKey] = {};
+    }
+    req.session[oauthStateSessionKey][provider] = state;
+    req.session.save();
+
+    const authenticateOptions = { ...options, state };
+    passport.authenticate(provider, authenticateOptions)(req, res, next);
+  };
+}
+
+function enforceValidOAuthState(provider) {
+  return (req, res, next) => {
+    const { state } = req.query || {};
+    const savedState = req.session?.[oauthStateSessionKey]?.[provider];
+
+    if (!state || !savedState || state !== savedState) {
+      console.warn('[WARN] OAuth state validation failed', { provider, state, savedState });
+      return res.status(403).json({ ok: false, error: 'Invalid OAuth state.' });
+    }
+
+    delete req.session[oauthStateSessionKey][provider];
+    req.session.save();
+    next();
+  };
+}
 
 if (GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET) {
   passport.use(
@@ -561,6 +411,10 @@ app.get('/auth/providers', (req, res) => {
   res.json({ providers: configuredAuthProviders });
 });
 
+// ============================================
+// Authentication & Session Routes
+// ============================================
+
 app.get('/api/auth/status', (req, res) => {
   const isAuthenticated = Boolean(req.isAuthenticated && req.isAuthenticated());
   res.json({
@@ -617,6 +471,10 @@ if (isTest) {
   });
 }
 
+// ============================================
+// Middleware & Helper Functions
+// ============================================
+
 function requireAuth(req, res, next) {
   if (req.isAuthenticated && req.isAuthenticated()) {
     return next();
@@ -627,13 +485,25 @@ function requireAuth(req, res, next) {
 
 function buildIntegrationCatalogResponse() {
   const openAiConfigured = Boolean(OPEN_API_KEY);
+  const perplexityConfigured = Boolean(PERPLEXITY_API_KEY);
 
   return connectorsCatalog.map((connector) => {
-    const connected = connector.provider === 'openai' ? openAiConfigured : false;
+    let connected = false;
+    let statusMessage = '';
+
+    if (connector.provider === 'openai') {
+      connected = openAiConfigured;
+      statusMessage = connected
+        ? 'Active via server-side OpenAI credential.'
+        : 'Add OPEN_API_KEY (or set the OPEN_AI_KEY secret) to enable this connector.';
+    } else if (connector.provider === 'perplexity') {
+      connected = perplexityConfigured;
+      statusMessage = connected
+        ? 'Active via server-side Perplexity credential.'
+        : 'Add API_KEY (Perplexity) to enable this connector.';
+    }
+
     const status = connected ? 'connected' : 'requires_configuration';
-    const statusMessage = connected
-      ? 'Active via server-side OpenAI credential.'
-      : 'Add OPEN_API_KEY (or set the OPEN_AI_KEY secret) to enable this connector.';
 
     return {
       ...connector,
@@ -745,31 +615,16 @@ function safeParseJsonPayload(text) {
   return null;
 }
 
+// ============================================
+// Validation Schemas
+// ============================================
+
 const createVideoSchema = z.object({
   prompt: z.string().min(1).max(2000),
-  model: z
-    .string()
-    .trim()
-    .min(1)
-    .max(100)
-    .optional(),
-  seconds: z
-    .coerce
-    .number()
-    .int()
-    .min(1)
-    .max(60)
-    .optional(),
-  size: z
-    .string()
-    .trim()
-    .regex(/^\d+x\d+$/)
-    .optional(),
-  quality: z
-    .string()
-    .trim()
-    .max(20)
-    .optional(),
+  model: z.string().trim().min(1).max(100).optional(),
+  seconds: z.coerce.number().int().min(1).max(60).optional(),
+  size: z.string().trim().regex(/^\d+x\d+$/).optional(),
+  quality: z.string().trim().max(20).optional(),
 });
 
 const remixVideoSchema = z.object({
@@ -777,29 +632,13 @@ const remixVideoSchema = z.object({
 });
 
 const listVideosSchema = z.object({
-  after: z
-    .string()
-    .trim()
-    .min(1)
-    .max(128)
-    .optional(),
-  limit: z
-    .coerce
-    .number()
-    .int()
-    .min(1)
-    .max(50)
-    .optional(),
+  after: z.string().trim().min(1).max(128).optional(),
+  limit: z.coerce.number().int().min(1).max(50).optional(),
   order: z.enum(['asc', 'desc']).optional(),
 });
 
 const downloadVariantSchema = z.object({
-  variant: z
-    .string()
-    .trim()
-    .min(1)
-    .max(64)
-    .optional(),
+  variant: z.string().trim().min(1).max(64).optional(),
 });
 
 const imageGenerationSchema = z.object({
@@ -840,16 +679,22 @@ const imageVariationOptionsSchema = z.object({
   user: z.string().trim().min(1).max(64).optional(),
 });
 
+// ============================================
+// Utility Functions
+// ============================================
+
 function toSnakeCasePayload(data) {
   return Object.fromEntries(
-    Object.entries(data).map(([key, value]) => {
-      if (value === undefined || value === null) {
-        return [null, null];
-      }
+    Object.entries(data)
+      .map(([key, value]) => {
+        if (value === undefined || value === null) {
+          return [null, null];
+        }
 
-      const snakeKey = key.replace(/[A-Z]/g, (char) => `_${char.toLowerCase()}`);
-      return [snakeKey, value];
-    }).filter(([key]) => Boolean(key))
+        const snakeKey = key.replace(/[A-Z]/g, (char) => `_${char.toLowerCase()}`);
+        return [snakeKey, value];
+      })
+      .filter(([key]) => Boolean(key))
   );
 }
 
@@ -911,14 +756,17 @@ function extractOpenAiErrorMessage(error, fallbackMessage) {
     }
   }
 
-  if (typeof error?.message === 'string' && error.message.trim().length > 0 && error.message.length < 140) {
+  if (
+    typeof error?.message === 'string' &&
+    error.message.trim().length > 0 &&
+    error.message.length < 140
+  ) {
     return error.message.trim();
   }
 
   return fallbackMessage;
 }
 
-// Basic input validation helper
 function validateGenerateBody(body) {
   const { template, input, platform, tone } = body || {};
 
@@ -938,7 +786,6 @@ function validateGenerateBody(body) {
     return 'Invalid tone.';
   }
 
-  // Platform is optional but if provided, must be short
   if (platform && platform.length > 40) {
     return 'Platform value is too long.';
   }
@@ -968,7 +815,6 @@ function validateAnalysisBody(body) {
   return null;
 }
 
-// Map template to system-style instructions
 function buildPrompt({ template, input, platform, tone }) {
   const safePlatform = platform || 'social media';
   const safeTone = tone || 'default';
@@ -1013,16 +859,13 @@ ${input}
 `.trim();
 
     default:
-      // Should never hit because of validation
       return input;
   }
 }
 
 function buildAnalysisPrompt({ content, platform, goals, creatorName }) {
   const safePlatform = platform ? platform : 'social media';
-  const goalText = goals
-    ? `Creator goals: ${goals}`
-    : 'Focus on clarity, engagement, and conversion.';
+  const goalText = goals ? `Creator goals: ${goals}` : 'Focus on clarity, engagement, and conversion.';
   const creatorText = creatorName
     ? `The content author is ${creatorName}.`
     : 'The creator is seeking actionable coaching.';
@@ -1044,9 +887,6 @@ ${content.trim()}
 """`;
 }
 
-// This is where you call your provider.
-// Below is a skeleton for an OpenAI-style chat completion.
-// Swap endpoint/model as needed.
 function createTimeoutSignal(timeoutMs = 8000) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
@@ -1093,7 +933,9 @@ function validateConnectorSuggestionBody(body) {
   }
 
   if (Array.isArray(channels)) {
-    const invalidChannel = channels.find((channel) => typeof channel !== 'string' || channel.length > 40);
+    const invalidChannel = channels.find(
+      (channel) => typeof channel !== 'string' || channel.length > 40
+    );
     if (invalidChannel) {
       return 'channels must contain short string values (<= 40 chars).';
     }
@@ -1110,9 +952,10 @@ function buildConnectorSuggestionPrompt({ useCase, audience, channels, tone }) {
   const audienceText = audience
     ? `Target audience: ${audience}.`
     : 'Target audience: modern creator economy teams.';
-  const channelsText = Array.isArray(channels) && channels.length > 0
-    ? `Priority channels: ${channels.join(', ')}.`
-    : 'Priority channels: Instagram, TikTok, YouTube, LinkedIn.';
+  const channelsText =
+    Array.isArray(channels) && channels.length > 0
+      ? `Priority channels: ${channels.join(', ')}.`
+      : 'Priority channels: Instagram, TikTok, YouTube, LinkedIn.';
   const toneText = tone
     ? `Preferred collaboration tone: ${tone}.`
     : 'Preferred collaboration tone: proactive and friendly.';
@@ -1145,7 +988,9 @@ async function sendOpenAiTestResponse(res) {
     res.json({ ok: true });
   } catch (err) {
     console.error('[ERROR] OpenAI integration test failed', err);
-    res.status(500).json({ ok: false, error: err.message || 'OpenAI integration test failed.' });
+    res
+      .status(500)
+      .json({ ok: false, error: err.message || 'OpenAI integration test failed.' });
   }
 }
 
@@ -1175,6 +1020,10 @@ async function performOpenAiHealthCheck() {
   }
 }
 
+// ============================================
+// OpenAI Routes
+// ============================================
+
 app.post('/api/generate', async (req, res) => {
   if (!OPEN_API_KEY) {
     return res.status(503).json({
@@ -1195,7 +1044,6 @@ app.post('/api/generate', async (req, res) => {
     const prompt = buildPrompt({ template, input, platform, tone });
     const aiContent = await callAiProvider(prompt);
 
-    // Basic structured payload for future workflows
     return res.json({
       ok: true,
       template,
@@ -1265,6 +1113,9 @@ app.get('/api/integrations', (_req, res) => {
         cachedModels: cacheInfo.size,
         cacheExpiresAt: cacheInfo.expiresAt,
       },
+      perplexity: {
+        configured: Boolean(PERPLEXITY_API_KEY),
+      },
     },
   });
 });
@@ -1279,7 +1130,9 @@ app.get('/api/integrations/openai/status', (_req, res) => {
 
 app.get('/api/integrations/openai/models', async (_req, res) => {
   if (!openAiModelService) {
-    return res.status(503).json({ ok: false, error: 'OpenAI integration is not configured.' });
+    return res
+      .status(503)
+      .json({ ok: false, error: 'OpenAI integration is not configured.' });
   }
 
   try {
@@ -1298,7 +1151,9 @@ app.post('/api/integrations/openai/connectors', requireAuth, csrfProtection, asy
   }
 
   if (!OPEN_API_KEY) {
-    return res.status(503).json({ ok: false, error: 'OpenAI integration is not configured.' });
+    return res
+      .status(503)
+      .json({ ok: false, error: 'OpenAI integration is not configured.' });
   }
 
   try {
@@ -1311,13 +1166,19 @@ app.post('/api/integrations/openai/connectors', requireAuth, csrfProtection, asy
 
     const parsed = safeParseJsonPayload(aiContent);
     if (parsed && Array.isArray(parsed.connectors)) {
-      return res.json({ ok: true, summary: parsed.summary || null, connectors: parsed.connectors });
+      return res.json({
+        ok: true,
+        summary: parsed.summary || null,
+        connectors: parsed.connectors,
+      });
     }
 
     return res.json({ ok: true, summary: null, connectors: [], raw: aiContent });
   } catch (err) {
     console.error('[ERROR] /api/integrations/openai/connectors', err);
-    res.status(500).json({ ok: false, error: err.message || 'Failed to generate connector plan.' });
+    res
+      .status(500)
+      .json({ ok: false, error: err.message || 'Failed to generate connector plan.' });
   }
 });
 
@@ -1327,7 +1188,9 @@ app.post('/api/integrations/:id/test', requireAuth, csrfProtection, async (req, 
   }
 
   if (!OPEN_API_KEY) {
-    return res.status(503).json({ ok: false, error: 'OpenAI integration is not configured.' });
+    return res
+      .status(503)
+      .json({ ok: false, error: 'OpenAI integration is not configured.' });
   }
 
   await sendOpenAiTestResponse(res);
@@ -1335,7 +1198,9 @@ app.post('/api/integrations/:id/test', requireAuth, csrfProtection, async (req, 
 
 app.post('/api/integrations/openai/test', requireAuth, csrfProtection, async (_req, res) => {
   if (!OPEN_API_KEY) {
-    return res.status(503).json({ ok: false, error: 'OpenAI integration is not configured.' });
+    return res
+      .status(503)
+      .json({ ok: false, error: 'OpenAI integration is not configured.' });
   }
 
   await sendOpenAiTestResponse(res);
@@ -1348,10 +1213,16 @@ app.post(
   upload.single('input_reference'),
   async (req, res) => {
     if (!OPEN_API_KEY) {
-      return res.status(503).json({ ok: false, error: 'OpenAI integration is not configured.' });
+      return res
+        .status(503)
+        .json({ ok: false, error: 'OpenAI integration is not configured.' });
     }
 
-    const validationError = validateUploadedFile(req.file, allowedVideoMimeTypes, 'input_reference');
+    const validationError = validateUploadedFile(
+      req.file,
+      allowedVideoMimeTypes,
+      'input_reference'
+    );
     if (validationError) {
       return res.status(400).json({ ok: false, error: validationError });
     }
@@ -1388,37 +1259,46 @@ app.post(
   }
 );
 
-app.post('/api/integrations/openai/videos/:videoId/remix', requireAuth, csrfProtection, async (req, res) => {
-  if (!OPEN_API_KEY) {
-    return res.status(503).json({ ok: false, error: 'OpenAI integration is not configured.' });
-  }
+app.post(
+  '/api/integrations/openai/videos/:videoId/remix',
+  requireAuth,
+  csrfProtection,
+  async (req, res) => {
+    if (!OPEN_API_KEY) {
+      return res
+        .status(503)
+        .json({ ok: false, error: 'OpenAI integration is not configured.' });
+    }
 
-  const validation = remixVideoSchema.safeParse({ prompt: req.body?.prompt });
-  if (!validation.success) {
-    const issue = validation.error.issues[0];
-    return res.status(400).json({ ok: false, error: issue?.message || 'Invalid payload.' });
-  }
+    const validation = remixVideoSchema.safeParse({ prompt: req.body?.prompt });
+    if (!validation.success) {
+      const issue = validation.error.issues[0];
+      return res.status(400).json({ ok: false, error: issue?.message || 'Invalid payload.' });
+    }
 
-  try {
-    const video = await remixVideoJob({
-      apiKey: OPEN_API_KEY,
-      videoId: req.params.videoId,
-      prompt: validation.data.prompt,
-    });
-    return res.json({ ok: true, video });
-  } catch (error) {
-    console.error('[ERROR] /api/integrations/openai/videos/:videoId/remix', error);
-    const status = normaliseErrorStatus(error);
-    return res.status(status).json({
-      ok: false,
-      error: extractOpenAiErrorMessage(error, 'Failed to remix video.'),
-    });
+    try {
+      const video = await remixVideoJob({
+        apiKey: OPEN_API_KEY,
+        videoId: req.params.videoId,
+        prompt: validation.data.prompt,
+      });
+      return res.json({ ok: true, video });
+    } catch (error) {
+      console.error('[ERROR] /api/integrations/openai/videos/:videoId/remix', error);
+      const status = normaliseErrorStatus(error);
+      return res.status(status).json({
+        ok: false,
+        error: extractOpenAiErrorMessage(error, 'Failed to remix video.'),
+      });
+    }
   }
-});
+);
 
 app.get('/api/integrations/openai/videos', requireAuth, async (req, res) => {
   if (!OPEN_API_KEY) {
-    return res.status(503).json({ ok: false, error: 'OpenAI integration is not configured.' });
+    return res
+      .status(503)
+      .json({ ok: false, error: 'OpenAI integration is not configured.' });
   }
 
   const validation = listVideosSchema.safeParse({
@@ -1429,7 +1309,9 @@ app.get('/api/integrations/openai/videos', requireAuth, async (req, res) => {
 
   if (!validation.success) {
     const issue = validation.error.issues[0];
-    return res.status(400).json({ ok: false, error: issue?.message || 'Invalid query parameters.' });
+    return res
+      .status(400)
+      .json({ ok: false, error: issue?.message || 'Invalid query parameters.' });
   }
 
   try {
@@ -1450,7 +1332,9 @@ app.get('/api/integrations/openai/videos', requireAuth, async (req, res) => {
 
 app.get('/api/integrations/openai/videos/:videoId', requireAuth, async (req, res) => {
   if (!OPEN_API_KEY) {
-    return res.status(503).json({ ok: false, error: 'OpenAI integration is not configured.' });
+    return res
+      .status(503)
+      .json({ ok: false, error: 'OpenAI integration is not configured.' });
   }
 
   try {
@@ -1471,7 +1355,9 @@ app.get('/api/integrations/openai/videos/:videoId', requireAuth, async (req, res
 
 app.delete('/api/integrations/openai/videos/:videoId', requireAuth, async (req, res) => {
   if (!OPEN_API_KEY) {
-    return res.status(503).json({ ok: false, error: 'OpenAI integration is not configured.' });
+    return res
+      .status(503)
+      .json({ ok: false, error: 'OpenAI integration is not configured.' });
   }
 
   try {
@@ -1492,7 +1378,9 @@ app.delete('/api/integrations/openai/videos/:videoId', requireAuth, async (req, 
 
 app.get('/api/integrations/openai/videos/:videoId/content', requireAuth, async (req, res) => {
   if (!OPEN_API_KEY) {
-    return res.status(503).json({ ok: false, error: 'OpenAI integration is not configured.' });
+    return res
+      .status(503)
+      .json({ ok: false, error: 'OpenAI integration is not configured.' });
   }
 
   const validation = downloadVariantSchema.safeParse({
@@ -1501,7 +1389,9 @@ app.get('/api/integrations/openai/videos/:videoId/content', requireAuth, async (
 
   if (!validation.success) {
     const issue = validation.error.issues[0];
-    return res.status(400).json({ ok: false, error: issue?.message || 'Invalid query parameters.' });
+    return res
+      .status(400)
+      .json({ ok: false, error: issue?.message || 'Invalid query parameters.' });
   }
 
   try {
@@ -1530,34 +1420,41 @@ app.get('/api/integrations/openai/videos/:videoId/content', requireAuth, async (
   }
 });
 
-app.post('/api/integrations/openai/images/generations', requireAuth, csrfProtection, async (req, res) => {
-  if (!OPEN_API_KEY) {
-    return res.status(503).json({ ok: false, error: 'OpenAI integration is not configured.' });
-  }
+app.post(
+  '/api/integrations/openai/images/generations',
+  requireAuth,
+  csrfProtection,
+  async (req, res) => {
+    if (!OPEN_API_KEY) {
+      return res
+        .status(503)
+        .json({ ok: false, error: 'OpenAI integration is not configured.' });
+    }
 
-  const validation = imageGenerationSchema.safeParse(req.body || {});
-  if (!validation.success) {
-    const issue = validation.error.issues[0];
-    return res.status(400).json({ ok: false, error: issue?.message || 'Invalid payload.' });
-  }
+    const validation = imageGenerationSchema.safeParse(req.body || {});
+    if (!validation.success) {
+      const issue = validation.error.issues[0];
+      return res.status(400).json({ ok: false, error: issue?.message || 'Invalid payload.' });
+    }
 
-  try {
-    const payload = toSnakeCasePayload(validation.data);
-    const response = await createImageGeneration({
-      apiKey: OPEN_API_KEY,
-      payload,
-    });
+    try {
+      const payload = toSnakeCasePayload(validation.data);
+      const response = await createImageGeneration({
+        apiKey: OPEN_API_KEY,
+        payload,
+      });
 
-    return res.json({ ok: true, data: response });
-  } catch (error) {
-    console.error('[ERROR] /api/integrations/openai/images/generations', error);
-    const status = normaliseErrorStatus(error);
-    return res.status(status).json({
-      ok: false,
-      error: extractOpenAiErrorMessage(error, 'Failed to generate image.'),
-    });
+      return res.json({ ok: true, data: response });
+    } catch (error) {
+      console.error('[ERROR] /api/integrations/openai/images/generations', error);
+      const status = normaliseErrorStatus(error);
+      return res.status(status).json({
+        ok: false,
+        error: extractOpenAiErrorMessage(error, 'Failed to generate image.'),
+      });
+    }
   }
-});
+);
 
 app.post(
   '/api/integrations/openai/images/edits',
@@ -1569,7 +1466,9 @@ app.post(
   ]),
   async (req, res) => {
     if (!OPEN_API_KEY) {
-      return res.status(503).json({ ok: false, error: 'OpenAI integration is not configured.' });
+      return res
+        .status(503)
+        .json({ ok: false, error: 'OpenAI integration is not configured.' });
     }
 
     const validation = imageEditOptionsSchema.safeParse(req.body || {});
@@ -1583,7 +1482,11 @@ app.post(
       return res.status(400).json({ ok: false, error: 'At least one image file is required.' });
     }
 
-    const imageValidationError = validateUploadedFiles(rawImageFiles, allowedImageMimeTypes, 'image');
+    const imageValidationError = validateUploadedFiles(
+      rawImageFiles,
+      allowedImageMimeTypes,
+      'image'
+    );
     if (imageValidationError) {
       return res.status(400).json({ ok: false, error: imageValidationError });
     }
@@ -1595,14 +1498,13 @@ app.post(
     }
 
     const imageFiles = rawImageFiles.map(normaliseMulterFile);
-    const maskFile = normaliseMulterFile(rawMaskFile);
 
     try {
       const response = await createImageEdit({
         apiKey: OPEN_API_KEY,
         images: imageFiles,
-        mask: maskFile,
-        options: toSnakeCasePayload(validation.data),
+        mask: normaliseMulterFile(rawMaskFile),
+        ...validation.data,
       });
 
       return res.json({ ok: true, data: response });
@@ -1624,7 +1526,14 @@ app.post(
   upload.single('image'),
   async (req, res) => {
     if (!OPEN_API_KEY) {
-      return res.status(503).json({ ok: false, error: 'OpenAI integration is not configured.' });
+      return res
+        .status(503)
+        .json({ ok: false, error: 'OpenAI integration is not configured.' });
+    }
+
+    const validationError = validateUploadedFile(req.file, allowedImageMimeTypes, 'image');
+    if (validationError) {
+      return res.status(400).json({ ok: false, error: validationError });
     }
 
     const validation = imageVariationOptionsSchema.safeParse(req.body || {});
@@ -1633,21 +1542,11 @@ app.post(
       return res.status(400).json({ ok: false, error: issue?.message || 'Invalid payload.' });
     }
 
-    const imageFile = normaliseMulterFile(req.file);
-    if (!imageFile) {
-      return res.status(400).json({ ok: false, error: 'An image file is required.' });
-    }
-
-    const imageValidationError = validateUploadedFile(imageFile, allowedImageMimeTypes, 'image');
-    if (imageValidationError) {
-      return res.status(400).json({ ok: false, error: imageValidationError });
-    }
-
     try {
       const response = await createImageVariation({
         apiKey: OPEN_API_KEY,
-        image: imageFile,
-        options: toSnakeCasePayload(validation.data),
+        image: normaliseMulterFile(req.file),
+        ...validation.data,
       });
 
       return res.json({ ok: true, data: response });
@@ -1662,132 +1561,228 @@ app.post(
   }
 );
 
-app.use((err, req, res, next) => {
-  if (err.code === 'EBADCSRFTOKEN') {
-    return res.status(403).json({ ok: false, error: 'Invalid or missing CSRF token.' });
+// ============================================
+// Perplexity Deep Research Routes
+// ============================================
+
+app.post('/api/research', requireAuth, csrfProtection, async (req, res) => {
+  if (!PERPLEXITY_API_KEY) {
+    return res.status(503).json({
+      ok: false,
+      error:
+        'Perplexity integration is not configured. Add API_KEY to enable deep research functionality.',
+    });
   }
 
-  if (err.status === 403 && err.message === 'CORS origin denied') {
-    return res.status(403).json({ ok: false, error: 'Origin not allowed by CORS policy.' });
+  const { query, topic, purpose, maxTokens } = req.body || {};
+
+  const searchQuery = query || topic;
+  if (!searchQuery || typeof searchQuery !== 'string' || searchQuery.trim().length === 0) {
+    return res.status(400).json({
+      ok: false,
+      error: 'query or topic is required and must be a non-empty string.',
+    });
   }
 
-  return next(err);
+  if (searchQuery.length > 2000) {
+    return res.status(400).json({
+      ok: false,
+      error: 'query/topic must be 2000 characters or less.',
+    });
+  }
+
+  try {
+    const research = await performDeepResearch({
+      apiKey: PERPLEXITY_API_KEY,
+      query: buildResearchPrompt(searchQuery, purpose),
+      maxTokens: maxTokens || 2000,
+    });
+
+    return res.json({
+      ok: true,
+      topic: searchQuery,
+      purpose: purpose || 'general research',
+      research,
+    });
+  } catch (err) {
+    console.error('[ERROR] /api/research', err);
+    const status = err?.status || 500;
+    const errorMsg = err.message || 'Failed to perform research.';
+    return res.status(status).json({
+      ok: false,
+      error: errorMsg.slice(0, 500),
+    });
+  }
 });
 
-// Serve static files (your HTML/CSS/JS)
-// Keep this after API route definitions so POST/PUT/etc. requests reach handlers instead of
-// returning 405 from the static middleware when assets are missing.
-app.use(
-  express.static(publicDirectory, {
-    fallthrough: true,
-    dotfiles: 'ignore',
-    index: false,
-  })
-); // restrict static hosting to the dedicated public directory
+app.post('/api/research/competitive', requireAuth, csrfProtection, async (req, res) => {
+  if (!PERPLEXITY_API_KEY) {
+    return res.status(503).json({
+      ok: false,
+      error: 'Perplexity integration is not configured.',
+    });
+  }
+
+  const { contentTopic, competitor, platform } = req.body || {};
+
+  if (!contentTopic || typeof contentTopic !== 'string' || contentTopic.trim().length === 0) {
+    return res.status(400).json({
+      ok: false,
+      error: 'contentTopic is required.',
+    });
+  }
+
+  if (contentTopic.length > 500) {
+    return res.status(400).json({
+      ok: false,
+      error: 'contentTopic must be 500 characters or less.',
+    });
+  }
+
+  try {
+    const analysis = await analyzeCompetitiveContent({
+      apiKey: PERPLEXITY_API_KEY,
+      contentTopic: contentTopic.trim(),
+      competitor: competitor ? String(competitor).trim() : undefined,
+      platform: platform ? String(platform).trim() : undefined,
+    });
+
+    return res.json({
+      ok: true,
+      contentTopic,
+      competitor: competitor || null,
+      platform: platform || null,
+      analysis,
+    });
+  } catch (err) {
+    console.error('[ERROR] /api/research/competitive', err);
+    const status = err?.status || 500;
+    const errorMsg = err.message || 'Failed to analyze competitive content.';
+    return res.status(status).json({
+      ok: false,
+      error: errorMsg.slice(0, 500),
+    });
+  }
+});
+
+app.post('/api/research/audience', requireAuth, csrfProtection, async (req, res) => {
+  if (!PERPLEXITY_API_KEY) {
+    return res.status(503).json({
+      ok: false,
+      error: 'Perplexity integration is not configured.',
+    });
+  }
+
+  const { audience, platform, niche } = req.body || {};
+
+  if (!audience || typeof audience !== 'string' || audience.trim().length === 0) {
+    return res.status(400).json({
+      ok: false,
+      error: 'audience is required.',
+    });
+  }
+
+  if (audience.length > 500) {
+    return res.status(400).json({
+      ok: false,
+      error: 'audience must be 500 characters or less.',
+    });
+  }
+
+  try {
+    const insights = await getAudienceInsights({
+      apiKey: PERPLEXITY_API_KEY,
+      audience: audience.trim(),
+      platform: platform ? String(platform).trim() : undefined,
+      niche: niche ? String(niche).trim() : undefined,
+    });
+
+    return res.json({
+      ok: true,
+      audience,
+      platform: platform || null,
+      niche: niche || null,
+      insights,
+    });
+  } catch (err) {
+    console.error('[ERROR] /api/research/audience', err);
+    const status = err?.status || 500;
+    const errorMsg = err.message || 'Failed to get audience insights.';
+    return res.status(status).json({
+      ok: false,
+      error: errorMsg.slice(0, 500),
+    });
+  }
+});
+
+app.get('/api/integrations/perplexity/status', (_req, res) => {
+  res.json({
+    ok: true,
+    provider: 'perplexity',
+    configured: Boolean(PERPLEXITY_API_KEY),
+    capabilities: ['deep_research', 'competitive_analysis', 'audience_insights', 'trend_research'],
+  });
+});
+
+app.post('/api/integrations/perplexity/test', requireAuth, csrfProtection, async (req, res) => {
+  if (!PERPLEXITY_API_KEY) {
+    return res.status(503).json({
+      ok: false,
+      error: 'Perplexity integration is not configured.',
+    });
+  }
+
+  try {
+    const testResult = await performDeepResearch({
+      apiKey: PERPLEXITY_API_KEY,
+      query: 'What are the latest trends in content creation? Provide 3 key insights.',
+      maxTokens: 500,
+    });
+
+    if (!testResult || testResult.trim().length === 0) {
+      throw new Error('Empty response from Perplexity API.');
+    }
+
+    return res.json({
+      ok: true,
+      message: 'Perplexity integration is working correctly.',
+      sampleResult: testResult.slice(0, 300),
+    });
+  } catch (err) {
+    console.error('[ERROR] Perplexity test failed', err);
+    const status = err?.status || 500;
+    return res.status(status).json({
+      ok: false,
+      error: err.message || 'Perplexity integration test failed.',
+    });
+  }
+});
+
+// ============================================
+// Static File Serving
+// ============================================
+
+app.use(express.static(publicDirectory));
 
 app.get('/', (_req, res) => {
   res.sendFile(path.join(publicDirectory, 'index.html'));
 });
 
-if (NODE_ENV !== 'test') {
-  app.listen(PORT, () => {
-    console.log(`Server listening on http://localhost:${PORT}`);
-  });
-}
+// ============================================
+// Error Handling & Server Start
+// ============================================
 
-function ensureSession(req) {
-  if (!req.session) {
-    throw new Error('Session support is required but was not initialised.');
-  }
+app.use((err, _req, res, _next) => {
+  console.error('[ERROR]', err);
+  const status = err.status || 500;
+  const message = err.message || 'Internal server error.';
+  res.status(status).json({ ok: false, error: message });
+});
 
-  return req.session;
-}
-
-function issueOAuthState(req, provider) {
-  const activeSession = ensureSession(req);
-  const state = crypto.randomUUID();
-
-  const existingStates = activeSession[oauthStateSessionKey] || {};
-  const nextStateStore = {
-    ...existingStates,
-    [provider]: state,
-  };
-  // Reassign to trigger express-session change detection when resave=false.
-  activeSession[oauthStateSessionKey] = nextStateStore;
-
-  return state;
-}
-
-function consumeOAuthState(req, provider, providedState) {
-  if (typeof providedState !== 'string' || providedState.length === 0) {
-    return false;
-  }
-
-  const activeSession = ensureSession(req);
-  const stateStore = activeSession[oauthStateSessionKey] || {};
-  const expected = stateStore?.[provider];
-  delete stateStore[provider];
-
-  if (Object.keys(stateStore).length === 0) {
-    delete activeSession[oauthStateSessionKey];
-  } else {
-    activeSession[oauthStateSessionKey] = stateStore;
-  }
-
-  if (typeof expected !== 'string' || expected.length === 0) {
-    return false;
-  }
-
-  try {
-    const expectedBuffer = Buffer.from(expected, 'utf8');
-    const providedBuffer = Buffer.from(providedState, 'utf8');
-
-    if (expectedBuffer.length !== providedBuffer.length) {
-      return false;
-    }
-
-    return crypto.timingSafeEqual(expectedBuffer, providedBuffer);
-  } catch (error) {
-    console.error('[ERROR] Failed to compare OAuth state tokens securely.', error);
-    return false;
-  }
-}
-
-function issueOAuthStateAndAuthenticate(provider, options) {
-  return (req, res, next) => {
-    try {
-      const state = issueOAuthState(req, provider);
-      return passport.authenticate(provider, {
-        ...options,
-        state,
-      })(req, res, next);
-    } catch (error) {
-      console.error(`[ERROR] Failed to initiate ${provider} OAuth flow`, error);
-      return res.status(500).json({
-        ok: false,
-        error: 'Authentication temporarily unavailable. Please try again.',
-      });
-    }
-  };
-}
-
-function enforceValidOAuthState(provider) {
-  return (req, res, next) => {
-    try {
-      const providedState = typeof req.query.state === 'string' ? req.query.state : null;
-      const isValidState = consumeOAuthState(req, provider, providedState);
-
-      if (!isValidState) {
-        console.warn(`[WARN] Rejected ${provider} OAuth callback due to invalid state.`);
-        return res.redirect(302, `/login.html?error=${provider}_oauth_state`);
-      }
-    } catch (error) {
-      console.error(`[ERROR] ${provider} OAuth state validation failed`, error);
-      return res.status(500).json({ ok: false, error: 'OAuth state validation failed.' });
-    }
-
-    return next();
-  };
-}
-
-export default app;
+app.listen(PORT, () => {
+  console.log(`[INFO] Server running on http://localhost:${PORT}`);
+  console.log(`[INFO] Node environment: ${NODE_ENV}`);
+  console.log(
+    `[INFO] Configured auth providers: ${configuredAuthProviders.length > 0 ? configuredAuthProviders.join(', ') : 'none'}`
+  );
+});

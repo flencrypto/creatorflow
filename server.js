@@ -29,6 +29,13 @@ import {
   remixVideoJob,
   retrieveVideoJob,
 } from './lib/openai-media.js';
+import {
+  performDeepResearch,
+  buildResearchPrompt,
+  analyzeCompetitiveContent,
+  getAudienceInsights,
+} from './lib/perplexity.js';
+
 
 dotenv.config();
 
@@ -37,6 +44,7 @@ const PORT = process.env.PORT || 3000;
 const NODE_ENV = process.env.NODE_ENV || 'development';
 const isProduction = NODE_ENV === 'production';
 const isTest = NODE_ENV === 'test';
+const apiKey = process.env.API_KEY;
 
 const moduleFilename = fileURLToPath(import.meta.url);
 const moduleDirectory = path.dirname(moduleFilename);
@@ -237,7 +245,216 @@ app.use(
 const csrfProtection = csurf({ cookie: false });
 app.use(passport.initialize());
 app.use(passport.session());
+const PERPLEXITY_API_KEY = process.env.API_KEY; // Your Perplexity API key
 
+if (!PERPLEXITY_API_KEY) {
+  console.warn(
+    '[WARN] API_KEY (Perplexity) not set. /api/research endpoints will return 503 until you configure it.'
+  );
+} else {
+  console.info('[INFO] Perplexity API configured for deep research capabilities.');
+}
+
+// POST /api/research - Perform deep research on any topic
+app.post('/api/research', requireAuth, csrfProtection, async (req, res) => {
+  if (!PERPLEXITY_API_KEY) {
+    return res.status(503).json({
+      ok: false,
+      error:
+        'Perplexity integration is not configured. Add API_KEY to enable deep research functionality.',
+    });
+  }
+
+  const { query, topic, purpose, maxTokens } = req.body || {};
+
+  // Validate input
+  const searchQuery = query || topic;
+  if (!searchQuery || typeof searchQuery !== 'string' || searchQuery.trim().length === 0) {
+    return res.status(400).json({
+      ok: false,
+      error: 'query or topic is required and must be a non-empty string.',
+    });
+  }
+
+  if (searchQuery.length > 2000) {
+    return res.status(400).json({
+      ok: false,
+      error: 'query/topic must be 2000 characters or less.',
+    });
+  }
+
+  try {
+    const research = await performDeepResearch({
+      apiKey: PERPLEXITY_API_KEY,
+      query: buildResearchPrompt(searchQuery, purpose),
+      maxTokens: maxTokens || 2000,
+    });
+
+    return res.json({
+      ok: true,
+      topic: searchQuery,
+      purpose: purpose || 'general research',
+      research,
+    });
+  } catch (err) {
+    console.error('[ERROR] /api/research', err);
+    const status = err?.status || 500;
+    const errorMsg = err.message || 'Failed to perform research.';
+    return res.status(status).json({
+      ok: false,
+      error: errorMsg.slice(0, 500),
+    });
+  }
+});
+
+// POST /api/research/competitive - Analyze competitive content landscape
+app.post('/api/research/competitive', requireAuth, csrfProtection, async (req, res) => {
+  if (!PERPLEXITY_API_KEY) {
+    return res.status(503).json({
+      ok: false,
+      error: 'Perplexity integration is not configured.',
+    });
+  }
+
+  const { contentTopic, competitor, platform } = req.body || {};
+
+  if (!contentTopic || typeof contentTopic !== 'string' || contentTopic.trim().length === 0) {
+    return res.status(400).json({
+      ok: false,
+      error: 'contentTopic is required.',
+    });
+  }
+
+  if (contentTopic.length > 500) {
+    return res.status(400).json({
+      ok: false,
+      error: 'contentTopic must be 500 characters or less.',
+    });
+  }
+
+  try {
+    const analysis = await analyzeCompetitiveContent({
+      apiKey: PERPLEXITY_API_KEY,
+      contentTopic: contentTopic.trim(),
+      competitor: competitor ? String(competitor).trim() : undefined,
+      platform: platform ? String(platform).trim() : undefined,
+    });
+
+    return res.json({
+      ok: true,
+      contentTopic,
+      competitor: competitor || null,
+      platform: platform || null,
+      analysis,
+    });
+  } catch (err) {
+    console.error('[ERROR] /api/research/competitive', err);
+    const status = err?.status || 500;
+    const errorMsg = err.message || 'Failed to analyze competitive content.';
+    return res.status(status).json({
+      ok: false,
+      error: errorMsg.slice(0, 500),
+    });
+  }
+});
+
+// POST /api/research/audience - Get audience insights
+app.post('/api/research/audience', requireAuth, csrfProtection, async (req, res) => {
+  if (!PERPLEXITY_API_KEY) {
+    return res.status(503).json({
+      ok: false,
+      error: 'Perplexity integration is not configured.',
+    });
+  }
+
+  const { audience, platform, niche } = req.body || {};
+
+  if (!audience || typeof audience !== 'string' || audience.trim().length === 0) {
+    return res.status(400).json({
+      ok: false,
+      error: 'audience is required.',
+    });
+  }
+
+  if (audience.length > 500) {
+    return res.status(400).json({
+      ok: false,
+      error: 'audience must be 500 characters or less.',
+    });
+  }
+
+  try {
+    const insights = await getAudienceInsights({
+      apiKey: PERPLEXITY_API_KEY,
+      audience: audience.trim(),
+      platform: platform ? String(platform).trim() : undefined,
+      niche: niche ? String(niche).trim() : undefined,
+    });
+
+    return res.json({
+      ok: true,
+      audience,
+      platform: platform || null,
+      niche: niche || null,
+      insights,
+    });
+  } catch (err) {
+    console.error('[ERROR] /api/research/audience', err);
+    const status = err?.status || 500;
+    const errorMsg = err.message || 'Failed to get audience insights.';
+    return res.status(status).json({
+      ok: false,
+      error: errorMsg.slice(0, 500),
+    });
+  }
+});
+
+// GET /api/integrations/perplexity/status - Check Perplexity integration status
+app.get('/api/integrations/perplexity/status', (_req, res) => {
+  res.json({
+    ok: true,
+    provider: 'perplexity',
+    configured: Boolean(PERPLEXITY_API_KEY),
+    capabilities: [
+      'deep_research',
+      'competitive_analysis',
+      'audience_insights',
+      'trend_research',
+    ],
+  });
+});
+
+// POST /api/integrations/perplexity/test - Test Perplexity integration
+app.post('/api/integrations/perplexity/test', requireAuth, csrfProtection, async (req, res) => {
+  if (!PERPLEXITY_API_KEY) {
+    return res.status(503).json({
+      ok: false,
+      error: 'Perplexity integration is not configured.',
+    });
+  }
+
+  try {
+    const testResult = await performDeepResearch({
+      apiKey: PERPLEXITY_API_KEY,
+      query: 'What are the latest trends in content creation? Provide 3 key insights.',
+      maxTokens: 500,
+    });
+
+    if (!testResult || testResult.trim().length === 0) {
+      throw new Error('Empty response from Perplexity API.');
+    }
+
+    return res.json({
+      ok: true,
+      message: 'Perplexity integration is working correctly.',
+      sampleResult: testResult.slice(0, 300),
+    });
+  } catch (err) {
+    console.error('[ERROR] Perplexity test failed', err);
+    const status = err?.status || 500;
+    return res.status(status).json({
+      ok: false,
+      error: err.message || 'Perplexity integration test failed.',
 function mapPassportProfile(profile) {
   return {
     id: profile.id,

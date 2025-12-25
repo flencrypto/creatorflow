@@ -12,6 +12,7 @@ import { createClient as createRedisClient } from 'redis';
 import passport from 'passport';
 import multer from 'multer';
 import csurf from 'csurf';
+import helmet from 'helmet';
 import { z } from 'zod';
 import { Strategy as GoogleStrategy } from 'passport-google-oauth20';
 import { Strategy as FacebookStrategy } from 'passport-facebook';
@@ -41,6 +42,7 @@ import {
   generateWithVoice,
   validateContentForVoice,
 } from './lib/openai.js';
+import { fetchWithRetry, readJsonResponse } from './lib/http-client.js';
 
 dotenv.config();
 
@@ -243,6 +245,45 @@ if (redisUrl) {
 if (process.env.TRUST_PROXY === 'true') {
   app.set('trust proxy', 1);
 }
+
+const contentSecurityPolicy = {
+  directives: {
+    defaultSrc: ["'self'"],
+    scriptSrc: [
+      "'self'",
+      "'unsafe-inline'",
+      'https://cdn.tailwindcss.com',
+      'https://unpkg.com',
+      'https://cdn.jsdelivr.net',
+    ],
+    styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+    fontSrc: ["'self'", 'https://fonts.gstatic.com', 'data:'],
+    imgSrc: ["'self'", 'data:', 'blob:'],
+    connectSrc: ["'self'"],
+    objectSrc: ["'none'"],
+    baseUri: ["'self'"],
+    frameAncestors: ["'none'"],
+    formAction: ["'self'"],
+    upgradeInsecureRequests: [],
+  },
+};
+
+app.use(
+  helmet({
+    contentSecurityPolicy,
+    crossOriginEmbedderPolicy: false,
+    referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
+    frameguard: { action: 'deny' },
+    permissionsPolicy: {
+      features: {
+        camera: [],
+        geolocation: [],
+        microphone: [],
+        payment: [],
+      },
+    },
+  })
+);
 
 app.use(
   cors({
@@ -1054,16 +1095,6 @@ ${content.trim()}
 """`;
 }
 
-function createTimeoutSignal(timeoutMs = 8000) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-
-  return {
-    signal: controller.signal,
-    dispose: () => clearTimeout(timeout),
-  };
-}
-
 async function callAiProvider(prompt, options = {}) {
   if (!OPEN_API_KEY) {
     throw new Error('OPEN_API_KEY not configured on server. Provide OPEN_API_KEY or OPEN_AI_KEY.');
@@ -1165,26 +1196,25 @@ async function performOpenAiHealthCheck() {
   if (!OPEN_API_KEY) {
     throw new Error('OPEN_API_KEY not configured. Provide OPEN_API_KEY or OPEN_AI_KEY.');
   }
-
-  const { signal, dispose } = createTimeoutSignal();
-
-  try {
-    const response = await fetch('https://api.openai.com/v1/models?limit=1', {
+  const response = await fetchWithRetry(
+    'https://api.openai.com/v1/models?limit=1',
+    {
       headers: {
         Authorization: `Bearer ${OPEN_API_KEY}`,
       },
-      signal,
-    });
-
-    if (!response.ok) {
-      const text = await response.text().catch(() => '');
-      throw new Error(`OpenAI status check failed: ${response.status} - ${text}`);
+    },
+    {
+      timeoutMs: Number(process.env.HTTP_TIMEOUT_MS ?? '8000'),
+      retries: Number(process.env.HTTP_MAX_RETRIES ?? '3'),
     }
+  );
 
-    await response.json();
-  } finally {
-    dispose();
+  if (!response.ok) {
+    const text = await response.text().catch(() => '');
+    throw new Error(`OpenAI status check failed: ${response.status} - ${text}`);
   }
+
+  await readJsonResponse(response);
 }
 
 // ============================================

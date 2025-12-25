@@ -440,21 +440,25 @@ passport.deserializeUser((obj, done) => {
 });
 
 function issueOAuthStateAndAuthenticate(provider, options) {
-  return (req, res, next) => {
+  return async (req, res, next) => {
     const state = crypto.randomBytes(32).toString('hex');
     if (!req.session[oauthStateSessionKey]) {
       req.session[oauthStateSessionKey] = {};
     }
     req.session[oauthStateSessionKey][provider] = state;
-    req.session.save();
-
-    const authenticateOptions = { ...options, state };
-    passport.authenticate(provider, authenticateOptions)(req, res, next);
+    try {
+      await persistSession(req);
+      const authenticateOptions = { ...options, state };
+      passport.authenticate(provider, authenticateOptions)(req, res, next);
+    } catch (error) {
+      console.error('[ERROR] Failed to persist OAuth state in session.', error);
+      res.status(500).json({ ok: false, error: 'Failed to initialize OAuth flow.' });
+    }
   };
 }
 
 function enforceValidOAuthState(provider) {
-  return (req, res, next) => {
+  return async (req, res, next) => {
     const { state } = req.query || {};
     const savedState = req.session?.[oauthStateSessionKey]?.[provider];
 
@@ -464,9 +468,30 @@ function enforceValidOAuthState(provider) {
     }
 
     delete req.session[oauthStateSessionKey][provider];
-    req.session.save();
-    next();
+    try {
+      await persistSession(req);
+      next();
+    } catch (error) {
+      console.error('[ERROR] Failed to persist OAuth state cleanup.', error);
+      res.status(500).json({ ok: false, error: 'Failed to finalize OAuth flow.' });
+    }
   };
+}
+
+function persistSession(req) {
+  if (!req?.session || typeof req.session.save !== 'function') {
+    return Promise.resolve();
+  }
+
+  return new Promise((resolve, reject) => {
+    req.session.save((error) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+      resolve();
+    });
+  });
 }
 
 if (GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET) {

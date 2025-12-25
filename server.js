@@ -464,7 +464,7 @@ function enforceValidOAuthState(provider) {
 
     if (!state || !savedState || state !== savedState) {
       console.warn('[WARN] OAuth state validation failed', { provider, state, savedState });
-      return res.status(403).json({ ok: false, error: 'Invalid OAuth state.' });
+      return res.redirect(`/login.html?error=${provider}_oauth_state`);
     }
 
     delete req.session[oauthStateSessionKey][provider];
@@ -1383,6 +1383,10 @@ app.use(express.static(publicDirectory));
 // Start Server
 // ============================================
 
-app.listen(PORT, () => {
-  console.log(`[INFO] Server running on http://localhost:${PORT}`);
-});
+if (process.env.NODE_ENV !== 'test') {
+  app.listen(PORT, () => {
+    console.log(`[INFO] Server running on http://localhost:${PORT}`);
+  });
+}
+
+export default app;

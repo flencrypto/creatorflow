@@ -89,6 +89,25 @@ document.addEventListener('DOMContentLoaded', () => {
     const connectorResults = document.getElementById('connector-suggestions');
     const connectorSummary = document.getElementById('connector-summary');
 
+    let cachedCsrfToken = null;
+
+    async function fetchCsrfToken() {
+        if (cachedCsrfToken) {
+            return cachedCsrfToken;
+        }
+        try {
+            const response = await apiClient.fetch('/api/auth/csrf');
+            const data = await response.json();
+            if (data?.csrfToken) {
+                cachedCsrfToken = data.csrfToken;
+                return cachedCsrfToken;
+            }
+        } catch (error) {
+            console.warn('Failed to fetch CSRF token', error);
+        }
+        return null;
+    }
+
     async function bootstrap() {
         await refreshCatalog();
         attachTestButtons();
@@ -352,9 +371,14 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             try {
+                const csrfToken = await fetchCsrfToken();
+                const headers = { 'Content-Type': 'application/json' };
+                if (csrfToken) {
+                    headers['x-csrf-token'] = csrfToken;
+                }
                 const response = await apiClient.fetch('/api/integrations/openai/connectors', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers,
                     body: JSON.stringify(payload),
                 });
 
@@ -437,7 +461,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 ? '/api/integrations/openai/test'
                 : `/api/integrations/${provider}/test`;
         try {
-            await apiClient.fetch(endpoint, { method: 'POST' });
+            const csrfToken = await fetchCsrfToken();
+            const headers = {};
+            if (csrfToken) {
+                headers['x-csrf-token'] = csrfToken;
+            }
+            await apiClient.fetch(endpoint, { method: 'POST', headers });
             return true;
         } catch (error) {
             if (error?.status === 401 || error?.status === 403 || error?.status === 404) {

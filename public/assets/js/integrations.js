@@ -102,10 +102,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 cachedCsrfToken = data.csrfToken;
                 return cachedCsrfToken;
             }
+            console.warn('CSRF token endpoint returned no token');
         } catch (error) {
             console.warn('Failed to fetch CSRF token', error);
         }
         return null;
+    }
+
+    function clearCsrfToken() {
+        cachedCsrfToken = null;
     }
 
     async function bootstrap() {
@@ -387,6 +392,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 notification.success('Connector plan generated.');
             } catch (error) {
                 console.error('Failed to generate connector plan', error);
+                if (error?.status === 403) {
+                    clearCsrfToken();
+                }
                 notification.error(error.message || 'Failed to generate connector plan.');
                 connectorResults.innerHTML = '<p class="text-sm text-rose-600">Unable to generate connector plan right now.</p>';
             } finally {
@@ -469,6 +477,9 @@ document.addEventListener('DOMContentLoaded', () => {
             await apiClient.fetch(endpoint, { method: 'POST', headers });
             return true;
         } catch (error) {
+            if (error?.status === 403) {
+                clearCsrfToken();
+            }
             if (error?.status === 401 || error?.status === 403 || error?.status === 404) {
                 const statusOk = await probeOpenAiStatus();
                 if (statusOk) {

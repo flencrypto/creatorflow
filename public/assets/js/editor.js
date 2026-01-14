@@ -11,6 +11,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const historyList = document.getElementById('history-list');
     const logoutBtn = document.getElementById('logout-btn');
     const LOCAL_ADMIN_API_KEY = 'creatorflow_admin_api_key';
+    const LOCAL_MODEL_ID = 'gpt-4o-mini';
 
     const MAX_HISTORY_ITEMS = 50;
     const historyItems = [];
@@ -128,7 +129,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 Authorization: `Bearer ${apiKey}`,
             },
             body: JSON.stringify({
-                model: 'gpt-4o-mini',
+                model: LOCAL_MODEL_ID,
                 messages: [
                     {
                         role: 'system',
@@ -200,7 +201,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const generatedContent = await generateWithServer(payload);
             updateGeneratedContent(generatedContent, payload);
         } catch (err) {
-            const shouldFallback = err?.status === 404 || /404/.test(err?.message || '');
+            const shouldFallback = err?.status === 404 || err?.status === 503;
 
             if (shouldFallback) {
                 try {

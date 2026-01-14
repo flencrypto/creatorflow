@@ -192,6 +192,7 @@
     <script src="script.js"></script>
     <script>
         document.addEventListener('DOMContentLoaded', () => {
+            const EDITOR_PAGE = 'editor.html';
             const templateButtons = document.querySelectorAll('[data-template-target]');
 
             templateButtons.forEach((button) => {
@@ -212,7 +213,7 @@
                         params.set('prompt', button.dataset.prompt);
                     }
 
-                    window.location.href = `editor.html?${params.toString()}`;
+                    window.location.href = `${EDITOR_PAGE}?${params.toString()}`;
                 });
             });
         });

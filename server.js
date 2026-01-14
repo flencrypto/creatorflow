@@ -10,38 +10,19 @@ import session from 'express-session';
 import RedisStore from 'connect-redis';
 import { createClient as createRedisClient } from 'redis';
 import passport from 'passport';
-import multer from 'multer';
 import csurf from 'csurf';
 import helmet from 'helmet';
-import { z } from 'zod';
 import { Strategy as GoogleStrategy } from 'passport-google-oauth20';
 import { Strategy as FacebookStrategy } from 'passport-facebook';
 
-import { generateContentWithFallback } from './lib/openai.js';
-import { createOpenAiModelService } from './lib/openai-model-service.js';
 import {
-  createImageEdit,
-  createImageGeneration,
-  createImageVariation,
-  createVideoJob,
-  deleteVideoJob,
-  downloadVideoContent,
-  listVideoJobs,
-  remixVideoJob,
-  retrieveVideoJob,
-} from './lib/openai-media.js';
-import {
-  performDeepResearch,
-  buildResearchPrompt,
-  analyzeCompetitiveContent,
-  getAudienceInsights,
-} from './lib/perplexity.js';
-import {
+  generateContentWithFallback,
   VOICE_PERSONAS,
   getAvailableVoices,
   generateWithVoice,
   validateContentForVoice,
 } from './lib/openai.js';
+import { createOpenAiModelService } from './lib/openai-model-service.js';
 import { fetchWithRetry, readJsonResponse } from './lib/http-client.js';
 
 dotenv.config();
@@ -57,7 +38,6 @@ const moduleDirectory = path.dirname(moduleFilename);
 const publicDirectory = path.join(moduleDirectory, 'public');
 const oauthStateSessionKey = 'oauthStates';
 
-const MAX_UPLOAD_BYTES = 50 * 1024 * 1024; // 50MB safety limit for upstream assets
 const SESSION_COOKIE_NAME = 'creatorflow.sid';
 const sessionCookieConfig = {
   httpOnly: true,
@@ -65,27 +45,6 @@ const sessionCookieConfig = {
   secure: isProduction,
   maxAge: 1000 * 60 * 60 * 4, // 4 hours
 };
-const allowedImageMimeTypes = new Set([
-  'image/png',
-  'image/jpeg',
-  'image/webp',
-  'image/gif',
-  'image/bmp',
-  'image/tiff',
-]);
-const allowedVideoMimeTypes = new Set([
-  'video/mp4',
-  'video/quicktime',
-  'video/x-msvideo',
-  'video/x-matroska',
-]);
-
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: {
-    fileSize: MAX_UPLOAD_BYTES,
-  },
-});
 
 const SESSION_SECRET = process.env.SESSION_SECRET;
 if (!SESSION_SECRET && isProduction) {
@@ -115,12 +74,12 @@ const configuredAuthProviders = [];
 const resolvedOpenApiKey =
   process.env.OPEN_API_KEY ?? process.env.OPEN_AI_KEY ?? process.env.AI_API_KEY ?? null;
 
-if (!process.env.OPEN_API_KEY && process.env.OPEN_AI_KEY) {
+if (process.env.OPEN_AI_KEY && !process.env.OPEN_API_KEY) {
   process.env.OPEN_API_KEY = process.env.OPEN_AI_KEY;
 }
 
 const OPEN_API_KEY = resolvedOpenApiKey;
-const PERPLEXITY_API_KEY = process.env.API_KEY; // Your Perplexity API key
+const PERPLEXITY_API_KEY = process.env.API_KEY;
 
 const connectorsCatalog = [
   {
@@ -188,12 +147,12 @@ if (!OPEN_API_KEY) {
   console.warn('[WARN] Falling back to legacy AI_API_KEY environment variable.');
 }
 
-if (!PERPLEXITY_API_KEY) {
+if (PERPLEXITY_API_KEY) {
+  console.info('[INFO] Perplexity API configured for deep research capabilities.');
+} else {
   console.warn(
     '[WARN] API_KEY (Perplexity) not set. /api/research endpoints will return 503 until you configure it.'
   );
-} else {
-  console.info('[INFO] Perplexity API configured for deep research capabilities.');
 }
 
 const corsOrigins = process.env.CORS_ORIGIN
@@ -215,7 +174,7 @@ if (effectiveCorsOrigins.length === 0) {
 const allowedOrigins = new Set(effectiveCorsOrigins);
 
 const redisUrl = process.env.REDIS_URL;
-let sessionStore = undefined;
+let sessionStore;
 
 if (redisUrl) {
   const redisClient = createRedisClient({ url: redisUrl });
@@ -343,7 +302,7 @@ app.post('/api/generate/with-voice', async (req, res) => {
     });
   }
 
-  const { input, voiceId, template, platform, tone, customSystemPrompt } = req.body || {};
+  const { input, voiceId, template, platform, tone } = req.body || {};
 
   // Validate voice
   if (!voiceId || !VOICE_PERSONAS[voiceId]) {
@@ -789,7 +748,7 @@ function safeParseJsonPayload(text) {
 
   candidates.add(trimmed);
 
-  const startIndex = trimmed.search(/[\[{]/);
+  const startIndex = trimmed.search(/[[{]/);
   if (startIndex >= 0) {
     const fromFirstBracket = trimmed.slice(startIndex).trim();
     if (fromFirstBracket) {
@@ -826,154 +785,6 @@ function safeParseJsonPayload(text) {
 // ============================================
 // Validation Schemas
 // ============================================
-
-const createVideoSchema = z.object({
-  prompt: z.string().min(1).max(2000),
-  model: z.string().trim().min(1).max(100).optional(),
-  seconds: z.coerce.number().int().min(1).max(60).optional(),
-  size: z.string().trim().regex(/^\d+x\d+$/).optional(),
-  quality: z.string().trim().max(20).optional(),
-});
-
-const remixVideoSchema = z.object({
-  prompt: z.string().min(1).max(2000),
-});
-
-const listVideosSchema = z.object({
-  after: z.string().trim().min(1).max(128).optional(),
-  limit: z.coerce.number().int().min(1).max(50).optional(),
-  order: z.enum(['asc', 'desc']).optional(),
-});
-
-const downloadVariantSchema = z.object({
-  variant: z.string().trim().min(1).max(64).optional(),
-});
-
-const imageGenerationSchema = z.object({
-  prompt: z.string().min(1).max(32_000),
-  model: z.string().trim().min(1).max(100).optional(),
-  n: z.coerce.number().int().min(1).max(10).optional(),
-  size: z.string().trim().min(1).max(20).optional(),
-  responseFormat: z.enum(['url', 'b64_json']).optional(),
-  background: z.enum(['transparent', 'opaque', 'auto']).optional(),
-  quality: z.string().trim().min(1).max(20).optional(),
-  style: z.string().trim().min(1).max(20).optional(),
-  user: z.string().trim().min(1).max(64).optional(),
-  moderation: z.string().trim().min(1).max(20).optional(),
-  outputFormat: z.string().trim().min(1).max(10).optional(),
-  outputCompression: z.coerce.number().int().min(0).max(100).optional(),
-  partialImages: z.coerce.number().int().min(0).max(3).optional(),
-  stream: z.coerce.boolean().optional(),
-});
-
-const imageEditOptionsSchema = z.object({
-  prompt: z.string().min(1).max(32_000),
-  model: z.string().trim().min(1).max(100).optional(),
-  n: z.coerce.number().int().min(1).max(10).optional(),
-  size: z.string().trim().min(1).max(20).optional(),
-  responseFormat: z.enum(['url', 'b64_json']).optional(),
-  background: z.enum(['transparent', 'opaque', 'auto']).optional(),
-  quality: z.string().trim().min(1).max(20).optional(),
-  user: z.string().trim().min(1).max(64).optional(),
-  outputFormat: z.string().trim().min(1).max(10).optional(),
-  outputCompression: z.coerce.number().int().min(0).max(100).optional(),
-});
-
-const imageVariationOptionsSchema = z.object({
-  model: z.string().trim().min(1).max(100).optional(),
-  n: z.coerce.number().int().min(1).max(10).optional(),
-  size: z.string().trim().min(1).max(20).optional(),
-  responseFormat: z.enum(['url', 'b64_json']).optional(),
-  user: z.string().trim().min(1).max(64).optional(),
-});
-
-// ============================================
-// Utility Functions
-// ============================================
-
-function toSnakeCasePayload(data) {
-  return Object.fromEntries(
-    Object.entries(data)
-      .map(([key, value]) => {
-        if (value === undefined || value === null) {
-          return [null, null];
-        }
-
-        const snakeKey = key.replace(/[A-Z]/g, (char) => `_${char.toLowerCase()}`);
-        return [snakeKey, value];
-      })
-      .filter(([key]) => Boolean(key))
-  );
-}
-
-function normaliseMulterFile(file) {
-  if (!file) {
-    return null;
-  }
-
-  return {
-    buffer: file.buffer,
-    mimetype: file.mimetype,
-    filename: file.originalname,
-    size: typeof file.size === 'number' ? file.size : file.buffer?.length || null,
-  };
-}
-
-function validateUploadedFile(file, allowedMimeTypes, fieldName) {
-  if (!file) {
-    return null;
-  }
-
-  if (!allowedMimeTypes.has(file.mimetype)) {
-    return `${fieldName} must be one of the allowed types: ${Array.from(allowedMimeTypes).join(', ')}.`;
-  }
-
-  const fileSize = typeof file.size === 'number' ? file.size : file.buffer?.length;
-  if (typeof fileSize === 'number' && fileSize > MAX_UPLOAD_BYTES) {
-    return `${fieldName} exceeds the maximum allowed size of ${Math.floor(MAX_UPLOAD_BYTES / (1024 * 1024))}MB.`;
-  }
-
-  return null;
-}
-
-function validateUploadedFiles(files, allowedMimeTypes, fieldName) {
-  for (const file of files) {
-    const validationError = validateUploadedFile(file, allowedMimeTypes, fieldName);
-    if (validationError) {
-      return validationError;
-    }
-  }
-  return null;
-}
-
-function normaliseErrorStatus(error, fallback = 500) {
-  const status = typeof error?.status === 'number' ? error.status : fallback;
-  if (status >= 400 && status <= 599) {
-    return status;
-  }
-  return fallback;
-}
-
-function extractOpenAiErrorMessage(error, fallbackMessage) {
-  if (error?.status && error.status >= 400 && error.status < 500) {
-    if (typeof error?.body === 'string' && error.body.trim().length > 0) {
-      return error.body.trim().slice(0, 500);
-    }
-    if (typeof error?.message === 'string' && error.message.trim().length > 0) {
-      return error.message.trim();
-    }
-  }
-
-  if (
-    typeof error?.message === 'string' &&
-    error.message.trim().length > 0 &&
-    error.message.length < 140
-  ) {
-    return error.message.trim();
-  }
-
-  return fallbackMessage;
-}
 
 function validateGenerateBody(body) {
   const { template, input, platform, tone } = body || {};

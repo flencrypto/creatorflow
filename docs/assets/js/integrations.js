@@ -89,6 +89,30 @@ document.addEventListener('DOMContentLoaded', () => {
     const connectorResults = document.getElementById('connector-suggestions');
     const connectorSummary = document.getElementById('connector-summary');
 
+    let cachedCsrfToken = null;
+
+    async function fetchCsrfToken() {
+        if (cachedCsrfToken) {
+            return cachedCsrfToken;
+        }
+        try {
+            const response = await apiClient.fetch('/api/auth/csrf');
+            const data = await response.json();
+            if (data?.csrfToken) {
+                cachedCsrfToken = data.csrfToken;
+                return cachedCsrfToken;
+            }
+            console.warn('CSRF token endpoint returned no token');
+        } catch (error) {
+            console.warn('Failed to fetch CSRF token', error);
+        }
+        return null;
+    }
+
+    function clearCsrfToken() {
+        cachedCsrfToken = null;
+    }
+
     async function bootstrap() {
         await refreshCatalog();
         attachTestButtons();
@@ -352,9 +376,14 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             try {
+                const csrfToken = await fetchCsrfToken();
+                const headers = { 'Content-Type': 'application/json' };
+                if (csrfToken) {
+                    headers['x-csrf-token'] = csrfToken;
+                }
                 const response = await apiClient.fetch('/api/integrations/openai/connectors', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers,
                     body: JSON.stringify(payload),
                 });
 
@@ -363,6 +392,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 notification.success('Connector plan generated.');
             } catch (error) {
                 console.error('Failed to generate connector plan', error);
+                if (error?.status === 403) {
+                    clearCsrfToken();
+                }
                 notification.error(error.message || 'Failed to generate connector plan.');
                 connectorResults.innerHTML = '<p class="text-sm text-rose-600">Unable to generate connector plan right now.</p>';
             } finally {
@@ -437,9 +469,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 ? '/api/integrations/openai/test'
                 : `/api/integrations/${provider}/test`;
         try {
-            await apiClient.fetch(endpoint, { method: 'POST' });
+            const csrfToken = await fetchCsrfToken();
+            const headers = {};
+            if (csrfToken) {
+                headers['x-csrf-token'] = csrfToken;
+            }
+            await apiClient.fetch(endpoint, { method: 'POST', headers });
             return true;
         } catch (error) {
+            if (error?.status === 403) {
+                clearCsrfToken();
+            }
             if (error?.status === 401 || error?.status === 403 || error?.status === 404) {
                 const statusOk = await probeOpenAiStatus();
                 if (statusOk) {

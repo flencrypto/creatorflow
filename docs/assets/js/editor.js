@@ -222,8 +222,9 @@ document.addEventListener('DOMContentLoaded', () => {
             const status = typeof err?.status === 'number' ? err.status : null;
             const apiBase =
                 window.__CREATORFLOW_RUNTIME_CONFIG__?.apiBaseUrl || window.__API_BASE_URL || window.location?.origin;
+            const isStaticHost = apiBase && (apiBase.includes('github.io') || apiBase.includes('hf.space') || apiBase.includes('huggingface.co'));
             const staticHostHint =
-                (status === 404 || status === 405) && apiBase?.includes('github.io')
+                (status === 404 || status === 405) && isStaticHost
                     ? 'This page is being served from a static host (GitHub Pages) that cannot handle /api requests. Set ?apiBase=https://your-backend.example or update the <meta name="creatorflow:api-base"> tag to point at your running API server.'
                     : null;
             const fallbackMessage = 'Unexpected error during generation.';

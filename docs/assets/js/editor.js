@@ -222,7 +222,21 @@ document.addEventListener('DOMContentLoaded', () => {
             const status = typeof err?.status === 'number' ? err.status : null;
             const apiBase =
                 window.__CREATORFLOW_RUNTIME_CONFIG__?.apiBaseUrl || window.__API_BASE_URL || window.location?.origin;
-            const isStaticHost = apiBase && (apiBase.includes('github.io') || apiBase.includes('hf.space') || apiBase.includes('huggingface.co'));
+            
+            const isStaticHost = (() => {
+                if (!apiBase) return false;
+                try {
+                    const url = new URL(apiBase);
+                    const hostname = url.hostname.toLowerCase();
+                    return hostname.endsWith('.github.io') || 
+                           hostname.endsWith('.hf.space') || 
+                           hostname === 'huggingface.co' ||
+                           hostname.endsWith('.huggingface.co');
+                } catch {
+                    return false;
+                }
+            })();
+            
             const staticHostHint =
                 (status === 404 || status === 405) && isStaticHost
                     ? 'This page is being served from a static host that cannot handle /api requests. Set ?apiBase=https://your-backend.example or update the <meta name="creatorflow:api-base"> tag to point at your running API server.'

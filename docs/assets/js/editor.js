@@ -226,7 +226,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const isStaticHost = (() => {
                 if (!apiBase) return false;
                 try {
-                    const url = new URL(apiBase);
+                    const url = new URL(apiBase, window.location.origin);
                     const hostname = url.hostname.toLowerCase();
                     return hostname.endsWith('.github.io') || 
                            hostname.endsWith('.hf.space') || 

@@ -30,6 +30,13 @@ const createElement = (tagName = 'div') => {
 
 describe('editor module', () => {
     const originalGlobals = {};
+    const setNavigator = (value) => {
+        Object.defineProperty(global, 'navigator', {
+            value,
+            configurable: true,
+            writable: true,
+        });
+    };
 
     beforeEach(() => {
         originalGlobals.window = global.window;
@@ -42,7 +49,7 @@ describe('editor module', () => {
     afterEach(() => {
         global.window = originalGlobals.window;
         global.document = originalGlobals.document;
-        global.navigator = originalGlobals.navigator;
+        setNavigator(originalGlobals.navigator);
         global.alert = originalGlobals.alert;
         global.fetch = originalGlobals.fetch;
     });
@@ -124,11 +131,11 @@ describe('editor module', () => {
             },
         };
 
-        global.navigator = {
+        setNavigator({
             clipboard: {
                 writeText: () => Promise.resolve(),
             },
-        };
+        });
 
         const moduleUrl = new URL('../public/assets/js/editor.js', import.meta.url);
         await import(`${moduleUrl.href}?cacheBust=${Date.now()}`);

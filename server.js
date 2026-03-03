@@ -78,7 +78,7 @@ function issueOAuthStateToken(req, provider) {
   }
 
   const token = crypto.randomUUID();
-  store[provider] = token;
+  req.session[OAUTH_STATE_SESSION_KEY] = { ...store, [provider]: token };
   return token;
 }
 

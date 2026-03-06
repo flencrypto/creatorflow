@@ -27,6 +27,10 @@ import { fetchWithRetry, readJsonResponse } from './lib/http-client.js';
 
 dotenv.config();
 
+// Pre-compute the comma-separated list of voice IDs once to avoid rebuilding it
+// on every request that returns a validation error for an invalid voice ID.
+const AVAILABLE_VOICE_IDS = Object.keys(VOICE_PERSONAS).join(', ');
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 const NODE_ENV = process.env.NODE_ENV || 'development';
@@ -308,7 +312,7 @@ app.post('/api/generate/with-voice', async (req, res) => {
   if (!voiceId || !VOICE_PERSONAS[voiceId]) {
     return res.status(400).json({
       ok: false,
-      error: `Invalid voice ID. Available voices: ${Object.keys(VOICE_PERSONAS).join(', ')}`,
+      error: `Invalid voice ID. Available voices: ${AVAILABLE_VOICE_IDS}`,
     });
   }
 
@@ -389,7 +393,7 @@ app.post('/api/voices/validate', (req, res) => {
   if (!voiceId || !VOICE_PERSONAS[voiceId]) {
     return res.status(400).json({
       ok: false,
-      error: `Invalid voice ID. Available voices: ${Object.keys(VOICE_PERSONAS).join(', ')}`,
+      error: `Invalid voice ID. Available voices: ${AVAILABLE_VOICE_IDS}`,
     });
   }
 
@@ -739,35 +743,38 @@ function safeParseJsonPayload(text) {
     return null;
   }
 
-  const candidates = new Set();
+  // Build an ordered list of candidates (most likely first) without duplicates.
+  // Using an array preserves insertion order and lets us skip the Set overhead.
+  const seen = new Set();
+  const candidates = [];
+
+  const addCandidate = (s) => {
+    if (s && !seen.has(s)) {
+      seen.add(s);
+      candidates.push(s);
+    }
+  };
 
   const fencedMatch = trimmed.match(/```(?:json)?\s*([\S\s]*?)\s*```/i);
   if (fencedMatch && typeof fencedMatch[1] === 'string') {
-    candidates.add(fencedMatch[1].trim());
+    addCandidate(fencedMatch[1].trim());
   }
 
-  candidates.add(trimmed);
+  addCandidate(trimmed);
 
   const startIndex = trimmed.search(/[[{]/);
   if (startIndex >= 0) {
-    const fromFirstBracket = trimmed.slice(startIndex).trim();
-    if (fromFirstBracket) {
-      candidates.add(fromFirstBracket);
-    }
+    addCandidate(trimmed.slice(startIndex).trim());
 
     const balanced = extractBalancedJsonFragment(trimmed, startIndex);
     if (balanced) {
-      candidates.add(balanced.trim());
+      addCandidate(balanced.trim());
     }
   }
 
   let lastError = null;
 
   for (const candidate of candidates) {
-    if (!candidate) {
-      continue;
-    }
-
     try {
       return JSON.parse(candidate);
     } catch (error) {

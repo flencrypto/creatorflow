@@ -1373,7 +1373,13 @@ app.post(
 
     const options = { prompt };
     if (size && ALLOWED_IMAGE_SIZES.has(size)) options.size = size;
-    if (n) options.n = Number(n);
+    if (n !== undefined) {
+      const count = Number(n);
+      if (!Number.isInteger(count) || count < 1 || count > 10) {
+        return res.status(400).json({ ok: false, error: 'n must be an integer between 1 and 10.' });
+      }
+      options.n = count;
+    }
     if (responseFormat && ALLOWED_RESPONSE_FORMATS.has(responseFormat)) {
       options.response_format = responseFormat;
     }
@@ -1421,7 +1427,13 @@ app.post(
 
     const options = {};
     if (size && ALLOWED_IMAGE_SIZES.has(size)) options.size = size;
-    if (n) options.n = Number(n);
+    if (n !== undefined) {
+      const count = Number(n);
+      if (!Number.isInteger(count) || count < 1 || count > 10) {
+        return res.status(400).json({ ok: false, error: 'n must be an integer between 1 and 10.' });
+      }
+      options.n = count;
+    }
     if (responseFormat && ALLOWED_RESPONSE_FORMATS.has(responseFormat)) {
       options.response_format = responseFormat;
     }

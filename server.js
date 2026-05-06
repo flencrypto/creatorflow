@@ -10,6 +10,8 @@ import session from 'express-session';
 import RedisStore from 'connect-redis';
 import { createClient as createRedisClient } from 'redis';
 import passport from 'passport';
+import multer from 'multer';
+import { z } from 'zod';
 import csurf from 'csurf';
 import helmet from 'helmet';
 import { Strategy as GoogleStrategy } from 'passport-google-oauth20';
@@ -40,7 +42,13 @@ const isTest = NODE_ENV === 'test';
 const moduleFilename = fileURLToPath(import.meta.url);
 const moduleDirectory = path.dirname(moduleFilename);
 const publicDirectory = path.join(moduleDirectory, 'public');
-const oauthStateSessionKey = 'oauthStates';
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 50 * 1024 * 1024, // 50MB safety limit for upstream assets
+  },
+});
 
 const SESSION_COOKIE_NAME = 'creatorflow.sid';
 const sessionCookieConfig = {
@@ -74,6 +82,130 @@ const FACEBOOK_CALLBACK_URL =
   process.env.FACEBOOK_CALLBACK_URL || 'http://localhost:3000/auth/facebook/callback';
 
 const configuredAuthProviders = [];
+
+const OAUTH_STATE_SESSION_KEY = 'oauthState';
+
+function ensureOAuthStateStore(req) {
+  if (!req.session) {
+    return null;
+  }
+
+  const existingStore = req.session[OAUTH_STATE_SESSION_KEY];
+  if (!existingStore || typeof existingStore !== 'object') {
+    req.session[OAUTH_STATE_SESSION_KEY] = {};
+  }
+
+  return req.session[OAUTH_STATE_SESSION_KEY];
+}
+
+function issueOAuthStateToken(req, provider) {
+  const store = ensureOAuthStateStore(req);
+  if (!store) {
+    return null;
+  }
+
+  const token = crypto.randomUUID();
+  req.session[OAUTH_STATE_SESSION_KEY] = { ...store, [provider]: token };
+  return token;
+}
+
+function peekOAuthStateToken(req, provider) {
+  const store = req.session?.[OAUTH_STATE_SESSION_KEY];
+  if (!store || typeof store !== 'object') {
+    return null;
+  }
+  return typeof store[provider] === 'string' ? store[provider] : null;
+}
+
+function consumeOAuthStateToken(req, provider) {
+  const store = req.session?.[OAUTH_STATE_SESSION_KEY];
+  if (!store || typeof store !== 'object') {
+    return;
+  }
+
+  const remaining = Object.keys(store).filter((k) => k !== provider);
+  if (remaining.length === 0) {
+    delete req.session[OAUTH_STATE_SESSION_KEY];
+  } else {
+    req.session[OAUTH_STATE_SESSION_KEY] = Object.fromEntries(
+      remaining.map((k) => [k, store[k]])
+    );
+  }
+}
+
+function persistSession(req) {
+  if (!req?.session || typeof req.session.save !== 'function') {
+    return Promise.resolve();
+  }
+  return new Promise((resolve, reject) => {
+    req.session.save((err) => {
+      if (err) {
+        reject(err);
+      } else {
+        resolve();
+      }
+    });
+  });
+}
+
+function normaliseStateValue(value) {
+  if (Array.isArray(value)) {
+    return value[0];
+  }
+  return value;
+}
+
+function createOAuthInitiationHandler(provider, options) {
+  return async (req, res, next) => {
+    if (!req.session) {
+      console.error(
+        `[ERROR] Session unavailable for ${provider} OAuth start; refusing to continue without CSRF protection.`
+      );
+      res.status(500).send('Session support is required to initiate OAuth.');
+      return;
+    }
+
+    const token = issueOAuthStateToken(req, provider);
+    if (!token) {
+      res.status(500).send('Failed to create OAuth state token.');
+      return;
+    }
+
+    try {
+      await persistSession(req);
+    } catch (err) {
+      console.error(`[ERROR] Failed to persist session for ${provider} OAuth start:`, err);
+      res.status(500).send('Failed to persist session for OAuth.');
+      return;
+    }
+
+    return passport.authenticate(provider, { ...options, state: token })(req, res, next);
+  };
+}
+
+function createOAuthStateGuard(provider, failureRedirect) {
+  return async (req, res, next) => {
+    if (!req.session) {
+      return res.redirect(failureRedirect);
+    }
+
+    const expectedState = peekOAuthStateToken(req, provider);
+    const incomingState = normaliseStateValue(req.query?.state);
+
+    if (!expectedState || typeof incomingState !== 'string' || expectedState !== incomingState) {
+      return res.redirect(failureRedirect);
+    }
+
+    consumeOAuthStateToken(req, provider);
+    try {
+      await persistSession(req);
+    } catch (err) {
+      console.error(`[ERROR] Failed to persist session cleanup for ${provider} OAuth:`, err);
+    }
+
+    return next();
+  };
+}
 
 const resolvedOpenApiKey =
   process.env.OPEN_API_KEY ?? process.env.OPEN_AI_KEY ?? process.env.AI_API_KEY ?? null;
@@ -443,61 +575,6 @@ passport.deserializeUser((obj, done) => {
   done(null, obj);
 });
 
-function issueOAuthStateAndAuthenticate(provider, options) {
-  return async (req, res, next) => {
-    const state = crypto.randomBytes(32).toString('hex');
-    if (!req.session[oauthStateSessionKey]) {
-      req.session[oauthStateSessionKey] = {};
-    }
-    req.session[oauthStateSessionKey][provider] = state;
-    try {
-      await persistSession(req);
-      const authenticateOptions = { ...options, state };
-      passport.authenticate(provider, authenticateOptions)(req, res, next);
-    } catch (error) {
-      console.error('[ERROR] Failed to persist OAuth state in session.', error);
-      res.status(500).json({ ok: false, error: 'Failed to initialize OAuth flow.' });
-    }
-  };
-}
-
-function enforceValidOAuthState(provider) {
-  return async (req, res, next) => {
-    const { state } = req.query || {};
-    const savedState = req.session?.[oauthStateSessionKey]?.[provider];
-
-    if (!state || !savedState || state !== savedState) {
-      console.warn('[WARN] OAuth state validation failed', { provider, state, savedState });
-      return res.redirect(`/login.html?error=${provider}_oauth_state`);
-    }
-
-    delete req.session[oauthStateSessionKey][provider];
-    try {
-      await persistSession(req);
-      next();
-    } catch (error) {
-      console.error('[ERROR] Failed to persist OAuth state cleanup.', error);
-      res.status(500).json({ ok: false, error: 'Failed to finalize OAuth flow.' });
-    }
-  };
-}
-
-function persistSession(req) {
-  if (!req?.session || typeof req.session.save !== 'function') {
-    return Promise.resolve();
-  }
-
-  return new Promise((resolve, reject) => {
-    req.session.save((error) => {
-      if (error) {
-        reject(error);
-        return;
-      }
-      resolve();
-    });
-  });
-}
-
 if (GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET) {
   passport.use(
     new GoogleStrategy(
@@ -515,7 +592,7 @@ if (GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET) {
 
   app.get(
     '/auth/google',
-    issueOAuthStateAndAuthenticate('google', {
+    createOAuthInitiationHandler('google', {
       scope: ['profile', 'email'],
       prompt: 'select_account',
     })
@@ -523,7 +600,7 @@ if (GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET) {
 
   app.get(
     '/auth/google/callback',
-    enforceValidOAuthState('google'),
+    createOAuthStateGuard('google', '/login.html?error=google_oauth_state'),
     passport.authenticate('google', {
       failureRedirect: '/login.html?error=google',
       failureMessage: true,
@@ -556,14 +633,14 @@ if (FACEBOOK_APP_ID && FACEBOOK_APP_SECRET) {
 
   app.get(
     '/auth/facebook',
-    issueOAuthStateAndAuthenticate('facebook', {
+    createOAuthInitiationHandler('facebook', {
       scope: ['email'],
     })
   );
 
   app.get(
     '/auth/facebook/callback',
-    enforceValidOAuthState('facebook'),
+    createOAuthStateGuard('facebook', '/login.html?error=facebook_oauth_state'),
     passport.authenticate('facebook', {
       failureRedirect: '/login.html?error=facebook',
       failureMessage: true,
@@ -1221,6 +1298,231 @@ app.post('/api/integrations/openai/test', requireAuth, csrfProtection, async (_r
   await sendOpenAiTestResponse(res);
 });
 
+app.get('/api/integrations/openai/videos', requireAuth, async (req, res) => {
+  if (!OPEN_API_KEY) {
+    return res.status(503).json({ ok: false, error: 'OpenAI integration is not configured.' });
+  }
+
+  const validation = listVideosSchema.safeParse({
+    after: Array.isArray(req.query.after) ? req.query.after[0] : req.query.after,
+    limit: Array.isArray(req.query.limit) ? req.query.limit[0] : req.query.limit,
+    order: Array.isArray(req.query.order) ? req.query.order[0] : req.query.order,
+  });
+
+  if (!validation.success) {
+    const issue = validation.error.issues[0];
+    return res.status(400).json({ ok: false, error: issue?.message || 'Invalid query parameters.' });
+  }
+
+  try {
+    const videos = await listVideoJobs({
+      apiKey: OPEN_API_KEY,
+      ...validation.data,
+    });
+    return res.json({ ok: true, videos });
+  } catch (error) {
+    console.error('[ERROR] /api/integrations/openai/videos', error);
+    const status = normaliseErrorStatus(error);
+    return res.status(status).json({
+      ok: false,
+      error: extractOpenAiErrorMessage(error, 'Failed to list videos.'),
+    });
+  }
+});
+
+app.get('/api/integrations/openai/videos/:videoId', requireAuth, async (req, res) => {
+  if (!OPEN_API_KEY) {
+    return res.status(503).json({ ok: false, error: 'OpenAI integration is not configured.' });
+  }
+
+  try {
+    const video = await retrieveVideoJob({
+      apiKey: OPEN_API_KEY,
+      videoId: req.params.videoId,
+    });
+    return res.json({ ok: true, video });
+  } catch (error) {
+    console.error('[ERROR] /api/integrations/openai/videos/:videoId', error);
+    const status = normaliseErrorStatus(error);
+    return res.status(status).json({
+      ok: false,
+      error: extractOpenAiErrorMessage(error, 'Failed to retrieve video.'),
+    });
+  }
+});
+
+app.delete('/api/integrations/openai/videos/:videoId', requireAuth, async (req, res) => {
+  if (!OPEN_API_KEY) {
+    return res.status(503).json({ ok: false, error: 'OpenAI integration is not configured.' });
+  }
+
+  try {
+    const response = await deleteVideoJob({
+      apiKey: OPEN_API_KEY,
+      videoId: req.params.videoId,
+    });
+    return res.json({ ok: true, video: response });
+  } catch (error) {
+    console.error('[ERROR] DELETE /api/integrations/openai/videos/:videoId', error);
+    const status = normaliseErrorStatus(error);
+    return res.status(status).json({
+      ok: false,
+      error: extractOpenAiErrorMessage(error, 'Failed to delete video.'),
+    });
+  }
+});
+
+app.get('/api/integrations/openai/videos/:videoId/content', requireAuth, async (req, res) => {
+  if (!OPEN_API_KEY) {
+    return res.status(503).json({ ok: false, error: 'OpenAI integration is not configured.' });
+  }
+
+  const validation = downloadVariantSchema.safeParse({
+    variant: Array.isArray(req.query.variant) ? req.query.variant[0] : req.query.variant,
+  });
+
+  if (!validation.success) {
+    const issue = validation.error.issues[0];
+    return res.status(400).json({ ok: false, error: issue?.message || 'Invalid query parameters.' });
+  }
+
+  try {
+    const result = await downloadVideoContent({
+      apiKey: OPEN_API_KEY,
+      videoId: req.params.videoId,
+      variant: validation.data.variant,
+    });
+
+    if (result.headers['content-type']) {
+      res.setHeader('Content-Type', result.headers['content-type']);
+    }
+    if (result.headers['content-disposition']) {
+      res.setHeader('Content-Disposition', result.headers['content-disposition']);
+    }
+    res.setHeader('Content-Length', String(result.buffer.length));
+
+    return res.status(result.status).send(result.buffer);
+  } catch (error) {
+    console.error('[ERROR] GET /api/integrations/openai/videos/:videoId/content', error);
+    const status = normaliseErrorStatus(error);
+    return res.status(status).json({
+      ok: false,
+      error: extractOpenAiErrorMessage(error, 'Failed to download video content.'),
+    });
+  }
+});
+
+app.post('/api/integrations/openai/images/generations', requireAuth, async (req, res) => {
+  if (!OPEN_API_KEY) {
+    return res.status(503).json({ ok: false, error: 'OpenAI integration is not configured.' });
+  }
+
+  const validation = imageGenerationSchema.safeParse(req.body || {});
+  if (!validation.success) {
+    const issue = validation.error.issues[0];
+    return res.status(400).json({ ok: false, error: issue?.message || 'Invalid payload.' });
+  }
+
+  try {
+    const payload = toSnakeCasePayload(validation.data);
+    const response = await createImageGeneration({
+      apiKey: OPEN_API_KEY,
+      payload,
+    });
+
+    return res.json({ ok: true, data: response });
+  } catch (error) {
+    console.error('[ERROR] /api/integrations/openai/images/generations', error);
+    const status = normaliseErrorStatus(error);
+    return res.status(status).json({
+      ok: false,
+      error: extractOpenAiErrorMessage(error, 'Failed to generate image.'),
+    });
+  }
+});
+
+app.post(
+  '/api/integrations/openai/images/edits',
+  requireAuth,
+  upload.fields([
+    { name: 'image', maxCount: 16 },
+    { name: 'mask', maxCount: 1 },
+  ]),
+  async (req, res) => {
+    if (!OPEN_API_KEY) {
+      return res.status(503).json({ ok: false, error: 'OpenAI integration is not configured.' });
+    }
+
+    const validation = imageEditOptionsSchema.safeParse(req.body || {});
+    if (!validation.success) {
+      const issue = validation.error.issues[0];
+      return res.status(400).json({ ok: false, error: issue?.message || 'Invalid payload.' });
+    }
+
+    const imageFiles = Array.isArray(req.files?.image) ? req.files.image.map(normaliseMulterFile) : [];
+    if (!imageFiles || imageFiles.length === 0) {
+      return res.status(400).json({ ok: false, error: 'At least one image file is required.' });
+    }
+
+    try {
+      const response = await createImageEdit({
+        apiKey: OPEN_API_KEY,
+        images: imageFiles,
+        mask: normaliseMulterFile(Array.isArray(req.files?.mask) ? req.files.mask[0] : null),
+        options: toSnakeCasePayload(validation.data),
+      });
+
+      return res.json({ ok: true, data: response });
+    } catch (error) {
+      console.error('[ERROR] /api/integrations/openai/images/edits', error);
+      const status = normaliseErrorStatus(error);
+      return res.status(status).json({
+        ok: false,
+        error: extractOpenAiErrorMessage(error, 'Failed to edit image.'),
+      });
+    }
+  }
+);
+
+app.post(
+  '/api/integrations/openai/images/variations',
+  requireAuth,
+  upload.single('image'),
+  async (req, res) => {
+    if (!OPEN_API_KEY) {
+      return res.status(503).json({ ok: false, error: 'OpenAI integration is not configured.' });
+    }
+
+    const validation = imageVariationOptionsSchema.safeParse(req.body || {});
+    if (!validation.success) {
+      const issue = validation.error.issues[0];
+      return res.status(400).json({ ok: false, error: issue?.message || 'Invalid payload.' });
+    }
+
+    const imageFile = normaliseMulterFile(req.file);
+    if (!imageFile) {
+      return res.status(400).json({ ok: false, error: 'An image file is required.' });
+    }
+
+    try {
+      const response = await createImageVariation({
+        apiKey: OPEN_API_KEY,
+        image: imageFile,
+        options: toSnakeCasePayload(validation.data),
+      });
+
+      return res.json({ ok: true, data: response });
+    } catch (error) {
+      console.error('[ERROR] /api/integrations/openai/images/variations', error);
+      const status = normaliseErrorStatus(error);
+      return res.status(status).json({
+        ok: false,
+        error: extractOpenAiErrorMessage(error, 'Failed to create image variation.'),
+      });
+    }
+  }
+);
+
 // ============================================
 // Serve Static Files
 // ============================================
@@ -1237,4 +1539,5 @@ if (process.env.NODE_ENV !== 'test') {
   });
 }
 
+export { app };
 export default app;

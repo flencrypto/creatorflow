@@ -17,6 +17,8 @@ import helmet from 'helmet';
 import { Strategy as GoogleStrategy } from 'passport-google-oauth20';
 import { Strategy as FacebookStrategy } from 'passport-facebook';
 
+import multer from 'multer';
+
 import {
   generateContentWithFallback,
   VOICE_PERSONAS,
@@ -26,6 +28,11 @@ import {
 } from './lib/openai.js';
 import { createOpenAiModelService } from './lib/openai-model-service.js';
 import { fetchWithRetry, readJsonResponse } from './lib/http-client.js';
+import {
+  createImageGeneration,
+  createImageEdit,
+  createImageVariation,
+} from './lib/openai-media.js';
 
 dotenv.config();
 
@@ -1518,6 +1525,230 @@ app.post(
       return res.status(status).json({
         ok: false,
         error: extractOpenAiErrorMessage(error, 'Failed to create image variation.'),
+      });
+    }
+  }
+);
+
+// ============================================
+// Image Routes
+// ============================================
+
+const ALLOWED_IMAGE_MIME_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp']);
+const IMAGE_UPLOAD_SIZE_LIMIT_BYTES = 4 * 1024 * 1024; // 4 MB — OpenAI API limit
+
+const imageUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: IMAGE_UPLOAD_SIZE_LIMIT_BYTES },
+  fileFilter(_req, file, cb) {
+    if (ALLOWED_IMAGE_MIME_TYPES.has(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error(`Unsupported file type. Allowed types: ${[...ALLOWED_IMAGE_MIME_TYPES].join(', ')}`));
+    }
+  },
+});
+
+const ALLOWED_IMAGE_SIZES = new Set([
+  '256x256', '512x512', '1024x1024', '1792x1024', '1024x1792',
+]);
+const ALLOWED_IMAGE_QUALITIES = new Set(['standard', 'hd']);
+const ALLOWED_IMAGE_STYLES = new Set(['vivid', 'natural']);
+const ALLOWED_IMAGE_MODELS = new Set(['dall-e-2', 'dall-e-3']);
+const ALLOWED_RESPONSE_FORMATS = new Set(['url', 'b64_json']);
+
+function validateImageGenerateBody(body) {
+  const { prompt, size, quality, style, model, n, response_format: responseFormat } = body || {};
+
+  if (typeof prompt !== 'string' || prompt.trim().length === 0) {
+    return 'prompt is required and must be a non-empty string.';
+  }
+  if (prompt.length > 4000) {
+    return 'prompt must be 4000 characters or less.';
+  }
+  if (size && !ALLOWED_IMAGE_SIZES.has(size)) {
+    return `Invalid size. Allowed: ${[...ALLOWED_IMAGE_SIZES].join(', ')}.`;
+  }
+  if (quality && !ALLOWED_IMAGE_QUALITIES.has(quality)) {
+    return `Invalid quality. Allowed: ${[...ALLOWED_IMAGE_QUALITIES].join(', ')}.`;
+  }
+  if (style && !ALLOWED_IMAGE_STYLES.has(style)) {
+    return `Invalid style. Allowed: ${[...ALLOWED_IMAGE_STYLES].join(', ')}.`;
+  }
+  if (model && !ALLOWED_IMAGE_MODELS.has(model)) {
+    return `Invalid model. Allowed: ${[...ALLOWED_IMAGE_MODELS].join(', ')}.`;
+  }
+  if (n !== undefined) {
+    const count = Number(n);
+    if (!Number.isInteger(count) || count < 1 || count > 10) {
+      return 'n must be an integer between 1 and 10.';
+    }
+  }
+  if (responseFormat && !ALLOWED_RESPONSE_FORMATS.has(responseFormat)) {
+    return `Invalid response_format. Allowed: ${[...ALLOWED_RESPONSE_FORMATS].join(', ')}.`;
+  }
+  return null;
+}
+
+// POST /api/images/generate — text-to-image generation
+app.post('/api/images/generate', requireAuth, csrfProtection, async (req, res) => {
+  const validationError = validateImageGenerateBody(req.body);
+  if (validationError) {
+    return res.status(400).json({ ok: false, error: validationError });
+  }
+
+  if (!OPEN_API_KEY) {
+    return res.status(503).json({
+      ok: false,
+      error: 'OpenAI integration is not configured. Add OPEN_API_KEY to enable image generation.',
+    });
+  }
+
+  const { prompt, size, quality, style, model, n, response_format: responseFormat } = req.body;
+
+  try {
+    const payload = { prompt };
+    if (size) payload.size = size;
+    if (quality) payload.quality = quality;
+    if (style) payload.style = style;
+    if (model) payload.model = model;
+    if (n) payload.n = Number(n);
+    if (responseFormat) payload.response_format = responseFormat;
+
+    const result = await createImageGeneration({ apiKey: OPEN_API_KEY, payload });
+
+    return res.json({ ok: true, data: result.data ?? result });
+  } catch (err) {
+    console.error('[ERROR] /api/images/generate', err);
+    return res.status(500).json({
+      ok: false,
+      error: err.message || 'Failed to generate image.',
+    });
+  }
+});
+
+// POST /api/images/edit — edit an uploaded image with a prompt and optional mask
+app.post(
+  '/api/images/edit',
+  requireAuth,
+  csrfProtection,
+  imageUpload.fields([
+    { name: 'image', maxCount: 1 },
+    { name: 'mask', maxCount: 1 },
+  ]),
+  async (req, res) => {
+    const { prompt, size, n, response_format: responseFormat } = req.body || {};
+
+    if (!req.files?.image?.[0]) {
+      return res.status(400).json({ ok: false, error: 'image file is required.' });
+    }
+
+    if (typeof prompt !== 'string' || prompt.trim().length === 0) {
+      return res.status(400).json({ ok: false, error: 'prompt is required.' });
+    }
+
+    if (prompt.length > 1000) {
+      return res.status(400).json({ ok: false, error: 'prompt must be 1000 characters or less.' });
+    }
+
+    if (!OPEN_API_KEY) {
+      return res.status(503).json({
+        ok: false,
+        error: 'OpenAI integration is not configured. Add OPEN_API_KEY to enable image editing.',
+      });
+    }
+
+    const imageFile = req.files.image[0];
+    const maskFile = req.files?.mask?.[0];
+
+    const images = [
+      {
+        buffer: imageFile.buffer,
+        mimetype: imageFile.mimetype,
+        filename: imageFile.originalname,
+      },
+    ];
+
+    const mask = maskFile
+      ? { buffer: maskFile.buffer, mimetype: maskFile.mimetype, filename: maskFile.originalname }
+      : undefined;
+
+    const options = { prompt };
+    if (size && ALLOWED_IMAGE_SIZES.has(size)) options.size = size;
+    if (n !== undefined) {
+      const count = Number(n);
+      if (!Number.isInteger(count) || count < 1 || count > 10) {
+        return res.status(400).json({ ok: false, error: 'n must be an integer between 1 and 10.' });
+      }
+      options.n = count;
+    }
+    if (responseFormat && ALLOWED_RESPONSE_FORMATS.has(responseFormat)) {
+      options.response_format = responseFormat;
+    }
+
+    try {
+      const result = await createImageEdit({ apiKey: OPEN_API_KEY, images, mask, options });
+
+      return res.json({ ok: true, data: result.data ?? result });
+    } catch (err) {
+      console.error('[ERROR] /api/images/edit', err);
+      return res.status(500).json({
+        ok: false,
+        error: err.message || 'Failed to edit image.',
+      });
+    }
+  }
+);
+
+// POST /api/images/variation — create variations of an uploaded image
+app.post(
+  '/api/images/variation',
+  requireAuth,
+  csrfProtection,
+  imageUpload.single('image'),
+  async (req, res) => {
+    if (!req.file) {
+      return res.status(400).json({ ok: false, error: 'image file is required.' });
+    }
+
+    const { size, n, response_format: responseFormat } = req.body || {};
+
+    if (!OPEN_API_KEY) {
+      return res.status(503).json({
+        ok: false,
+        error:
+          'OpenAI integration is not configured. Add OPEN_API_KEY to enable image variations.',
+      });
+    }
+
+    const image = {
+      buffer: req.file.buffer,
+      mimetype: req.file.mimetype,
+      filename: req.file.originalname,
+    };
+
+    const options = {};
+    if (size && ALLOWED_IMAGE_SIZES.has(size)) options.size = size;
+    if (n !== undefined) {
+      const count = Number(n);
+      if (!Number.isInteger(count) || count < 1 || count > 10) {
+        return res.status(400).json({ ok: false, error: 'n must be an integer between 1 and 10.' });
+      }
+      options.n = count;
+    }
+    if (responseFormat && ALLOWED_RESPONSE_FORMATS.has(responseFormat)) {
+      options.response_format = responseFormat;
+    }
+
+    try {
+      const result = await createImageVariation({ apiKey: OPEN_API_KEY, image, options });
+
+      return res.json({ ok: true, data: result.data ?? result });
+    } catch (err) {
+      console.error('[ERROR] /api/images/variation', err);
+      return res.status(500).json({
+        ok: false,
+        error: err.message || 'Failed to create image variation.',
       });
     }
   }

@@ -82,20 +82,43 @@ function issueOAuthStateToken(req, provider) {
   return token;
 }
 
-function consumeOAuthStateToken(req, provider) {
+function peekOAuthStateToken(req, provider) {
   const store = req.session?.[OAUTH_STATE_SESSION_KEY];
   if (!store || typeof store !== 'object') {
     return null;
   }
+  return typeof store[provider] === 'string' ? store[provider] : null;
+}
 
-  const token = typeof store[provider] === 'string' ? store[provider] : null;
-  delete store[provider];
-
-  if (Object.keys(store).length === 0) {
-    delete req.session[OAUTH_STATE_SESSION_KEY];
+function consumeOAuthStateToken(req, provider) {
+  const store = req.session?.[OAUTH_STATE_SESSION_KEY];
+  if (!store || typeof store !== 'object') {
+    return;
   }
 
-  return token;
+  const remaining = Object.keys(store).filter((k) => k !== provider);
+  if (remaining.length === 0) {
+    delete req.session[OAUTH_STATE_SESSION_KEY];
+  } else {
+    req.session[OAUTH_STATE_SESSION_KEY] = Object.fromEntries(
+      remaining.map((k) => [k, store[k]])
+    );
+  }
+}
+
+function persistSession(req) {
+  if (!req?.session || typeof req.session.save !== 'function') {
+    return Promise.resolve();
+  }
+  return new Promise((resolve, reject) => {
+    req.session.save((err) => {
+      if (err) {
+        reject(err);
+      } else {
+        resolve();
+      }
+    });
+  });
 }
 
 function normaliseStateValue(value) {
@@ -106,7 +129,7 @@ function normaliseStateValue(value) {
 }
 
 function createOAuthInitiationHandler(provider, options) {
-  return (req, res, next) => {
+  return async (req, res, next) => {
     if (!req.session) {
       console.error(
         `[ERROR] Session unavailable for ${provider} OAuth start; refusing to continue without CSRF protection.`
@@ -121,21 +144,36 @@ function createOAuthInitiationHandler(provider, options) {
       return;
     }
 
+    try {
+      await persistSession(req);
+    } catch (err) {
+      console.error(`[ERROR] Failed to persist session for ${provider} OAuth start:`, err);
+      res.status(500).send('Failed to persist session for OAuth.');
+      return;
+    }
+
     return passport.authenticate(provider, { ...options, state: token })(req, res, next);
   };
 }
 
 function createOAuthStateGuard(provider, failureRedirect) {
-  return (req, res, next) => {
+  return async (req, res, next) => {
     if (!req.session) {
       return res.redirect(failureRedirect);
     }
 
-    const expectedState = consumeOAuthStateToken(req, provider);
+    const expectedState = peekOAuthStateToken(req, provider);
     const incomingState = normaliseStateValue(req.query?.state);
 
     if (!expectedState || typeof incomingState !== 'string' || expectedState !== incomingState) {
       return res.redirect(failureRedirect);
+    }
+
+    consumeOAuthStateToken(req, provider);
+    try {
+      await persistSession(req);
+    } catch (err) {
+      console.error(`[ERROR] Failed to persist session cleanup for ${provider} OAuth:`, err);
     }
 
     return next();

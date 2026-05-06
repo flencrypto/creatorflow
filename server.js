@@ -1279,7 +1279,7 @@ app.use(
   })
 ); // serves index.html, assets, etc. from project root
 
-const isTestEnvironment = process.env.NODE_ENV === 'test';
+const isTestEnvironment = NODE_ENV === 'test';
 const httpServer = isTestEnvironment
   ? null
   : app.listen(PORT, () => {

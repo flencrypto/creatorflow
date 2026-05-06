@@ -1,0 +1,101 @@
+```json
+{
+  "articles": [
+    {
+      "id": "getting-started-1",
+      "title": "How to Create Your First Content Project",
+      "category": "Getting Started",
+      "content": "Creating your first content project in CreatorFlow Studio is simple:\n\n1. Click 'New Project' on the Dashboard\n2. Choose a content template (Social Media Post, Video Script, etc.)\n3. Enter your topic or prompt\n4. Select target platforms\n5. Generate and customize content\n6. Export to your preferred platforms",
+      "keywords": ["first project", "new project", "getting started", "create content"],
+      "popularity": 95
+    },
+    {
+      "id": "content-generation-1",
+      "title": "Using AI Content Generation Effectively",
+      "category": "Content Creation",
+      "content": "To get the best results from AI content generation:\n\n- Be specific with your prompts\n- Include target audience and tone\n- Specify content length and format\n- Use platform-specific templates\n- Review and edit generated content\n\nBest practices:\n• Start with clear objectives\n• Provide context and examples\n• Use the tone selector for consistency\n• Generate multiple options to choose from",
+      "keywords": ["ai generation", "prompts", "best practices", "content quality"],
+      "popularity": 88
+    },
+    {
+      "id": "templates-1",
+      "title": "Understanding Content Templates",
+      "category": "Templates",
+      "content": "Content templates help you maintain consistency across platforms:\n\nAvailable Templates:\n- Social Media Posts (Instagram, Twitter, Facebook)\n- Video Scripts (TikTok, YouTube, Reels)\n- Blog Outlines\n- Email Newsletters\n\nCustomization options:\n• Modify tone and style\n• Adjust content length\n• Add platform-specific elements\n• Save custom templates for reuse",
+      "keywords": ["templates", "customization", "platform specific", "reusable"],
+      "popularity": 82
+    },
+    {
+      "id": "export-1",
+      "title": "Exporting Content to Social Media Platforms",
+      "category": "Export & Publishing",
+      "content": "Export your content directly to:\n\nInstagram:\n- Posts, Stories, and Reels\n- Automatic hashtag generation\n- Caption optimization",
+      "keywords": ["export", "publishing", "social media", "direct publish"],
+      "popularity": 78
+    },
+    {
+      "id": "integrations-1",
+      "title": "Connecting Social Media Accounts",
+      "category": "Integrations",
+      "content": "To connect your social media accounts:\n\n1. Go to Integrations page\n2. Click on platform icon\n3. Authorize connection\n4. Configure posting preferences",
+      "keywords": ["integrations", "connect accounts", "authorization", "social platforms"],
+      "popularity": 75
+    },
+    {
+      "id": "billing-1",
+      "title": "Managing Your Subscription and Billing",
+      "category": "Billing & Plans",
+      "content": "Subscription management:\n\nUpdating payment method:\n1. Navigate to Billing settings\n2. Click 'Update Payment Method'\n3. Enter new card details\n4. Save changes",
+      "keywords": ["billing", "subscription", "payment", "update card"],
+      "popularity": 70
+    },
+    {
+      "id": "troubleshooting-1",
+      "title": "Common Content Generation Issues",
+      "category": "Troubleshooting",
+      "content": "Common issues and solutions:\n\n1. Content too generic:\n   - Add more specific details to your prompt\n   - Include target audience information\n   - Specify desired tone and style\n\n2. Generation taking too long:\n   - Check your internet connection\n   - Try generating smaller pieces of content\n   - Contact support if persistent",
+      "keywords": ["troubleshooting", "common issues", "generation problems", "error solutions"],
+      "popularity": 65
+    },
+    {
+      "id": "content-optimization-1",
+      "title": "Optimizing Content for Different Platforms",
+      "category": "Content Creation",
+      "content": "Platform-specific optimization:\n\nInstagram:\n- Use high-quality images\n- Include relevant hashtags\n- Write engaging captions",
+      "keywords": ["optimization", "platform specific", "content format", "best practices"],
+      "popularity": 62
+    },
+    {
+      "id": "analytics-1",
+      "title": "Understanding Content Performance Analytics",
+      "category": "Analytics",
+      "content": "Key metrics to track:\n- Engagement rates\n- Reach and impressions\n- Click-through rates\n- Audience growth",
+      "keywords": ["analytics", "performance", "metrics", "content success"],
+      "popularity": 58
+    },
+    {
+      "id": "team-collaboration-1",
+      "title": "Working with Team Members",
+      "category": "Team Features",
+      "content": "Collaboration features:\n\n- Share projects with team members\n- Real-time collaboration\n- Version history\n- Comment and feedback system",
+      "popularity": 55
+    },
+    {
+      "id": "mobile-app-1",
+      "title": "Using the CreatorFlow Mobile App",
+      "category": "Mobile",
+      "content": "Mobile app features:\n- Generate content on the go\n- Quick access to templates\n- Mobile-optimized interface",
+      "keywords": ["mobile", "app", "on the go", "mobile features"],
+      "popularity": 52
+    },
+    {
+      "id": "api-1",
+      "title": "Using the CreatorFlow API",
+      "category": "API & Development",
+      "content": "API documentation and usage:\n\nEndpoints available:\n- Content generation\n- Template management\n- Export and publishing\n- Analytics data",
+      "keywords": ["api", "development", "integrations", "custom solutions"],
+      "popularity": 48
+    }
+  ]
+}
+```

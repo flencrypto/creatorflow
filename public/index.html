@@ -1,0 +1,1140 @@
+```html
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <title>CreatorFlow Studio - AI Content Magic Wand</title>
+
+  <link rel="manifest" href="/manifest.json" />
+  <meta name="theme-color" content="#020617" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="CreatorFlow" />
+  <meta name="creatorflow:api-base" content="auto" />
+
+  <link rel="icon" type="image/x-icon" href="/static/favicon.ico" />
+  <link rel="stylesheet" href="style.css" />
+
+  <script>
+    tailwind = {
+      config: {
+        theme: {
+          extend: {
+            fontFamily: {
+              display: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+            },
+            boxShadow: {
+              glow: '0 0 42px rgba(34, 211, 238, 0.2)',
+              glowPurple: '0 0 48px rgba(167, 139, 250, 0.22)',
+              panel: '0 32px 100px rgba(0, 0, 0, 0.38)',
+            },
+            animation: {
+              float: 'cfFloat 5.5s ease-in-out infinite',
+              floatSlow: 'cfFloat 8s ease-in-out infinite',
+              scan: 'cfScan 4.5s linear infinite',
+              pulseSoft: 'cfPulseSoft 2.4s ease-in-out infinite',
+              orbit: 'cfOrbit 14s linear infinite',
+              shimmer: 'cfShimmer 5s ease-in-out infinite',
+            },
+            keyframes: {
+              cfFloat: {
+                '0%, 100%': { transform: 'translateY(0)' },
+                '50%': { transform: 'translateY(-12px)' },
+              },
+              cfScan: {
+                '0%': { transform: 'translateX(-120%)' },
+                '100%': { transform: 'translateX(120%)' },
+              },
+              cfPulseSoft: {
+                '0%, 100%': { opacity: '0.55', transform: 'scale(1)' },
+                '50%': { opacity: '1', transform: 'scale(1.04)' },
+              },
+              cfOrbit: {
+                '0%': { transform: 'rotate(0deg)' },
+                '100%': { transform: 'rotate(360deg)' },
+              },
+              cfShimmer: {
+                '0%, 100%': { backgroundPosition: '0% 50%' },
+                '50%': { backgroundPosition: '100% 50%' },
+              },
+            },
+          },
+        },
+      },
+    };
+  </script>
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/feather-icons/dist/feather.min.js"></script>
+
+  <script src="components/navbar.js"></script>
+  <script src="components/footer.js"></script>
+  <script src="components/dashboard-stats.js"></script>
+  <script src="components/project-card.js"></script>
+
+  <style>
+    :root {
+      --cf-bg: #020617;
+      --cf-panel: rgba(15, 23, 42, 0.76);
+      --cf-panel-strong: rgba(15, 23, 42, 0.94);
+      --cf-border: rgba(125, 211, 252, 0.22);
+      --cf-border-hot: rgba(34, 211, 238, 0.58);
+      --cf-text: #eef8ff;
+      --cf-muted: #94a3b8;
+      --cf-cyan: #22d3ee;
+      --cf-blue: #60a5fa;
+      --cf-purple: #a78bfa;
+      --cf-pink: #f472b6;
+      --cf-green: #34d399;
+      --cf-orange: #fb923c;
+      --cf-rose: #fb7185;
+    }
+
+    body {
+      min-height: 100vh;
+      color: var(--cf-text);
+      background:
+        radial-gradient(circle at 8% 10%, rgba(34, 211, 238, 0.24), transparent 34%),
+        radial-gradient(circle at 92% 12%, rgba(167, 139, 250, 0.24), transparent 35%),
+        radial-gradient(circle at 55% 95%, rgba(244, 114, 182, 0.13), transparent 42%),
+        linear-gradient(135deg, #020617 0%, #07111f 46%, #111827 100%);
+      overflow-x: hidden;
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 0;
+      background-image:
+        linear-gradient(rgba(125, 211, 252, 0.055) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(125, 211, 252, 0.055) 1px, transparent 1px);
+      background-size: 48px 48px;
+      mask-image: radial-gradient(circle at center, black, transparent 78%);
+      animation: cfGridDrift 20s linear infinite;
+    }
+
+    body::after {
+      content: "";
+      position: fixed;
+      inset: -22%;
+      pointer-events: none;
+      z-index: 0;
+      background:
+        conic-gradient(
+          from 180deg,
+          transparent,
+          rgba(34, 211, 238, 0.09),
+          transparent,
+          rgba(167, 139, 250, 0.11),
+          transparent,
+          rgba(244, 114, 182, 0.08),
+          transparent
+        );
+      filter: blur(42px);
+      animation: cfAuroraSpin 30s linear infinite;
+    }
+
+    custom-navbar,
+    custom-footer,
+    main {
+      position: relative;
+      z-index: 1;
+    }
+
+    .cf-glass {
+      position: relative;
+      overflow: hidden;
+      border: 1px solid var(--cf-border);
+      background:
+        linear-gradient(145deg, rgba(15, 23, 42, 0.88), rgba(2, 6, 23, 0.66)),
+        radial-gradient(circle at top left, rgba(34, 211, 238, 0.16), transparent 38%);
+      box-shadow: 0 32px 100px rgba(0, 0, 0, 0.38);
+      backdrop-filter: blur(20px);
+    }
+
+    .cf-glass::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.075), transparent);
+      transform: translateX(-120%);
+      animation: cfPanelSweep 6.5s ease-in-out infinite;
+    }
+
+    .cf-glass > * {
+      position: relative;
+      z-index: 1;
+    }
+
+    .cf-card {
+      position: relative;
+      overflow: hidden;
+      border: 1px solid rgba(125, 211, 252, 0.18);
+      background:
+        linear-gradient(180deg, rgba(15, 23, 42, 0.84), rgba(2, 6, 23, 0.72)),
+        radial-gradient(circle at 20% 0%, rgba(34, 211, 238, 0.12), transparent 36%);
+      box-shadow:
+        0 24px 70px rgba(0, 0, 0, 0.3),
+        inset 0 1px 0 rgba(255,255,255,0.05);
+      transition:
+        transform 220ms ease,
+        border-color 220ms ease,
+        box-shadow 220ms ease,
+        filter 220ms ease;
+    }
+
+    .cf-card:hover {
+      transform: translateY(-6px);
+      border-color: rgba(34, 211, 238, 0.5);
+      box-shadow:
+        0 32px 92px rgba(0, 0, 0, 0.42),
+        0 0 42px rgba(34, 211, 238, 0.15);
+      filter: brightness(1.06);
+    }
+
+    .cf-button {
+      position: relative;
+      overflow: hidden;
+      transition:
+        transform 180ms ease,
+        filter 180ms ease,
+        box-shadow 180ms ease,
+        border-color 180ms ease;
+    }
+
+    .cf-button::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.24), transparent);
+      transform: translateX(-120%);
+      transition: transform 500ms ease;
+    }
+
+    .cf-button:hover {
+      transform: translateY(-3px);
+      filter: brightness(1.08);
+    }
+
+    .cf-button:hover::after {
+      transform: translateX(120%);
+    }
+
+    .cf-outline-button {
+      border: 1px solid rgba(125, 211, 252, 0.26);
+      background:
+        linear-gradient(145deg, rgba(15, 23, 42, 0.74), rgba(2, 6, 23, 0.7)),
+        radial-gradient(circle at top left, rgba(34, 211, 238, 0.12), transparent 35%);
+      color: #dff7ff;
+    }
+
+    .cf-gradient-text {
+      background: linear-gradient(90deg, #ffffff, #a7f3ff, #c4b5fd, #f9a8d4, #ffffff);
+      background-size: 250% 250%;
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+      animation: cfTextFlow 7s ease-in-out infinite;
+    }
+
+    .cf-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      border: 1px solid rgba(34, 211, 238, 0.28);
+      background: rgba(34, 211, 238, 0.09);
+      color: #b8f3ff;
+      border-radius: 999px;
+      padding: 9px 14px;
+      font-size: 12px;
+      font-weight: 950;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+    }
+
+    .cf-status-dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 999px;
+      background: var(--cf-green);
+      box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.65);
+      animation: cfPulseDot 1.7s ease-out infinite;
+    }
+
+    .cf-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      border: 1px solid rgba(125, 211, 252, 0.22);
+      background: rgba(15, 23, 42, 0.62);
+      color: #dff7ff;
+      border-radius: 999px;
+      padding: 8px 12px;
+      font-size: 12px;
+      font-weight: 850;
+    }
+
+    .cf-progress {
+      height: 8px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: rgba(148, 163, 184, 0.15);
+    }
+
+    .cf-progress > span {
+      display: block;
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, var(--cf-cyan), var(--cf-purple), var(--cf-pink));
+      box-shadow: 0 0 22px rgba(34, 211, 238, 0.34);
+    }
+
+    .cf-hero-visual {
+      position: relative;
+      min-height: 620px;
+    }
+
+    .cf-orb {
+      position: absolute;
+      inset: 50%;
+      width: 260px;
+      height: 260px;
+      margin-left: -130px;
+      margin-top: -130px;
+      border: 1px solid rgba(34, 211, 238, 0.28);
+      border-radius: 999px;
+      background:
+        radial-gradient(circle, rgba(34, 211, 238, 0.28), transparent 58%),
+        radial-gradient(circle at 35% 30%, rgba(255,255,255,0.42), transparent 18%);
+      box-shadow:
+        inset 0 0 45px rgba(34, 211, 238, 0.13),
+        0 0 95px rgba(34, 211, 238, 0.18);
+      animation: cfFloat 6s ease-in-out infinite;
+    }
+
+    .cf-orb::before,
+    .cf-orb::after {
+      content: "";
+      position: absolute;
+      inset: -26px;
+      border-radius: 999px;
+      border: 1px dashed rgba(167, 139, 250, 0.44);
+      animation: cfOrbit 18s linear infinite;
+    }
+
+    .cf-orb::after {
+      inset: 42px;
+      border-style: solid;
+      border-color: rgba(96, 165, 250, 0.34);
+      animation-duration: 10s;
+      animation-direction: reverse;
+    }
+
+    .cf-floating-card {
+      position: absolute;
+      width: min(360px, calc(100vw - 56px));
+      border: 1px solid rgba(125, 211, 252, 0.22);
+      border-radius: 28px;
+      background:
+        linear-gradient(145deg, rgba(15, 23, 42, 0.88), rgba(2, 6, 23, 0.78)),
+        radial-gradient(circle at top left, rgba(34, 211, 238, 0.16), transparent 38%);
+      box-shadow:
+        0 30px 90px rgba(0,0,0,0.38),
+        inset 0 1px 0 rgba(255,255,255,0.05);
+      backdrop-filter: blur(18px);
+      padding: 22px;
+      transition:
+        transform 220ms ease,
+        border-color 220ms ease,
+        box-shadow 220ms ease;
+    }
+
+    .cf-floating-card:hover {
+      border-color: rgba(34, 211, 238, 0.52);
+      box-shadow:
+        0 34px 96px rgba(0,0,0,0.44),
+        0 0 48px rgba(34, 211, 238, 0.14);
+      transform: translateY(-5px);
+    }
+
+    .cf-floating-card.one {
+      top: 20px;
+      right: 2%;
+      animation: cfFloat 6s ease-in-out infinite;
+    }
+
+    .cf-floating-card.two {
+      top: 240px;
+      left: 0;
+      animation: cfFloat 7.2s ease-in-out infinite;
+    }
+
+    .cf-floating-card.three {
+      right: 4%;
+      bottom: 58px;
+      animation: cfFloat 8.2s ease-in-out infinite;
+    }
+
+    .cf-avatar {
+      display: inline-grid;
+      place-items: center;
+      width: 42px;
+      height: 42px;
+      border: 2px solid rgba(2, 6, 23, 0.9);
+      border-radius: 999px;
+      background: linear-gradient(135deg, var(--cf-cyan), var(--cf-purple));
+      color: #03111c;
+      font-size: 12px;
+      font-weight: 950;
+      margin-left: -10px;
+    }
+
+    .cf-avatar:first-child {
+      margin-left: 0;
+    }
+
+    .cf-logo-tile {
+      display: grid;
+      place-items: center;
+      min-height: 96px;
+      border: 1px solid rgba(125, 211, 252, 0.16);
+      border-radius: 24px;
+      background:
+        linear-gradient(145deg, rgba(15, 23, 42, 0.78), rgba(2, 6, 23, 0.64)),
+        radial-gradient(circle at 30% 0%, rgba(34, 211, 238, 0.11), transparent 38%);
+      color: rgba(238, 248, 255, 0.88);
+      font-weight: 950;
+      letter-spacing: -0.03em;
+      transition:
+        transform 180ms ease,
+        border-color 180ms ease,
+        box-shadow 180ms ease;
+    }
+
+    .cf-logo-tile:hover {
+      transform: translateY(-4px);
+      border-color: rgba(34, 211, 238, 0.44);
+      box-shadow: 0 24px 70px rgba(34, 211, 238, 0.1);
+    }
+
+    .cf-timeline-step {
+      position: relative;
+      padding-left: 32px;
+    }
+
+    .cf-timeline-step::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 6px;
+      width: 13px;
+      height: 13px;
+      border-radius: 999px;
+      background: var(--cf-cyan);
+      box-shadow: 0 0 0 8px rgba(34, 211, 238, 0.1);
+    }
+
+    .cf-timeline-step::after {
+      content: "";
+      position: absolute;
+      left: 6px;
+      top: 27px;
+      bottom: -22px;
+      width: 1px;
+      background: linear-gradient(180deg, rgba(34, 211, 238, 0.5), transparent);
+    }
+
+    .cf-timeline-step:last-child::after {
+      display: none;
+    }
+
+    .cf-reveal {
+      opacity: 0;
+      transform: translateY(22px);
+      transition:
+        opacity 620ms ease,
+        transform 620ms ease;
+    }
+
+    .cf-reveal.is-visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .cf-focus-mode .cf-dim-on-focus {
+      opacity: 0.22;
+      filter: blur(1px);
+    }
+
+    .cf-toast {
+      position: fixed;
+      right: 22px;
+      bottom: 22px;
+      z-index: 40;
+      max-width: min(420px, calc(100vw - 44px));
+      border: 1px solid rgba(34, 211, 238, 0.32);
+      border-radius: 18px;
+      background: rgba(8, 13, 26, 0.92);
+      color: #eaf8ff;
+      padding: 14px 16px;
+      box-shadow: 0 28px 80px rgba(0, 0, 0, 0.42);
+      backdrop-filter: blur(14px);
+      opacity: 0;
+      pointer-events: none;
+      transform: translateY(18px);
+      transition:
+        opacity 180ms ease,
+        transform 180ms ease;
+    }
+
+    .cf-toast[data-visible="true"] {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    @keyframes cfGridDrift {
+      from {
+        background-position: 0 0;
+      }
+      to {
+        background-position: 48px 48px;
+      }
+    }
+
+    @keyframes cfAuroraSpin {
+      from {
+        transform: rotate(0deg) scale(1.08);
+      }
+      to {
+        transform: rotate(360deg) scale(1.08);
+      }
+    }
+
+    @keyframes cfPanelSweep {
+      0%, 56% {
+        transform: translateX(-120%);
+      }
+      76%, 100% {
+        transform: translateX(120%);
+      }
+    }
+
+    @keyframes cfTextFlow {
+      0%, 100% {
+        background-position: 0% 50%;
+      }
+      50% {
+        background-position: 100% 50%;
+      }
+    }
+
+    @keyframes cfPulseDot {
+      0% {
+        box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.62);
+      }
+      70% {
+        box-shadow: 0 0 0 13px rgba(52, 211, 153, 0);
+      }
+      100% {
+        box-shadow: 0 0 0 0 rgba(52, 211, 153, 0);
+      }
+    }
+
+    @keyframes cfFloat {
+      0%, 100% {
+        transform: translateY(0);
+      }
+      50% {
+        transform: translateY(-12px);
+      }
+    }
+
+    @keyframes cfOrbit {
+      from {
+        transform: rotate(0deg);
+      }
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    @media (max-width: 1024px) {
+      .cf-hero-visual {
+        min-height: 680px;
+      }
+
+      .cf-floating-card.one {
+        right: 50%;
+        transform: translateX(50%);
+      }
+
+      .cf-floating-card.two {
+        left: 50%;
+        transform: translateX(-50%);
+      }
+
+      .cf-floating-card.three {
+        right: 50%;
+        transform: translateX(50%);
+      }
+    }
+
+    @media (max-width: 640px) {
+      .cf-hero-visual {
+        min-height: 760px;
+      }
+
+      .cf-floating-card {
+        width: calc(100vw - 40px);
+      }
+
+      .cf-orb {
+        width: 210px;
+        height: 210px;
+        margin-left: -105px;
+        margin-top: -105px;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        animation-duration: 0.001ms !important;
+        animation-iteration-count: 1 !important;
+        scroll-behavior: auto !important;
+        transition-duration: 0.001ms !important;
+      }
+
+      .cf-reveal {
+        opacity: 1;
+        transform: none;
+      }
+    }
+  </style>
+</head>
+
+<body class="min-h-screen font-display antialiased">
+  <custom-navbar></custom-navbar>
+
+  <main class="container mx-auto px-4 py-8 lg:px-6">
+    <!-- Hero Section -->
+    <section class="cf-glass cf-reveal mb-20 rounded-[2rem] p-6 md:p-10 lg:p-12">
+      <div class="grid gap-12 lg:grid-cols-[1.04fr_0.96fr] lg:items-center">
+        <div class="space-y-7 text-left">
+          <span class="cf-badge">
+            <span class="cf-status-dot"></span>
+            <i data-feather="zap" class="h-4 w-4" aria-hidden="true"></i>
+            Launching Studio 2.0
+          </span>
+
+          <h1 class="max-w-5xl text-5xl font-black leading-[0.92] tracking-[-0.075em] text-white md:text-7xl xl:text-8xl">
+            CreatorFlow
+            <span class="cf-gradient-text block">Studio</span>
+          </h1>
+
+          <p class="max-w-2xl text-lg leading-8 text-slate-300 md:text-xl">
+            Design polished campaigns, scripts, and carousels in minutes. Adaptive workflows learn your brand voice and keep every channel sharply on-message.
+          </p>
+
+          <div class="flex flex-col gap-4 sm:flex-row">
+            <a
+              href="signup.html"
+              class="cf-button inline-flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-cyan-300 via-blue-400 to-purple-400 px-8 py-4 font-black text-slate-950 shadow-glow"
+              aria-label="Start your free CreatorFlow trial"
+            >
+              <i data-feather="rocket" class="h-5 w-5" aria-hidden="true"></i>
+              Start Free Trial
+            </a>
+
+            <a
+              href="#features"
+              class="cf-button cf-outline-button inline-flex items-center justify-center gap-2 rounded-2xl px-8 py-4 font-black"
+              aria-label="Explore CreatorFlow features"
+            >
+              <i data-feather="compass" class="h-5 w-5" aria-hidden="true"></i>
+              Explore Features
+            </a>
+
+            <button
+              type="button"
+              id="focus-demo-button"
+              class="cf-button cf-outline-button inline-flex items-center justify-center gap-2 rounded-2xl px-8 py-4 font-black"
+            >
+              <i data-feather="target" class="h-5 w-5" aria-hidden="true"></i>
+              Focus Demo
+            </button>
+          </div>
+
+          <div class="grid gap-4 pt-3 sm:grid-cols-3" role="list">
+            <div class="cf-card rounded-3xl p-5" role="listitem">
+              <strong class="block text-3xl font-black tracking-[-0.05em] text-white">12h</strong>
+              <span class="mt-1 block text-sm text-slate-400">saved weekly per team</span>
+              <div class="cf-progress mt-4"><span style="width: 88%;"></span></div>
+            </div>
+
+            <div class="cf-card rounded-3xl p-5" role="listitem">
+              <strong class="block text-3xl font-black tracking-[-0.05em] text-white">95%</strong>
+              <span class="mt-1 block text-sm text-slate-400">faster approvals</span>
+              <div class="cf-progress mt-4"><span style="width: 95%;"></span></div>
+            </div>
+
+            <div class="cf-card rounded-3xl p-5" role="listitem">
+              <strong class="block text-3xl font-black tracking-[-0.05em] text-white">2K+</strong>
+              <span class="mt-1 block text-sm text-slate-400">brands onboarded</span>
+              <div class="cf-progress mt-4"><span style="width: 78%;"></span></div>
+            </div>
+          </div>
+
+          <div class="flex flex-wrap items-center gap-4 pt-2">
+            <div class="flex items-center">
+              <span class="cf-avatar" aria-hidden="true">DC</span>
+              <span class="cf-avatar" aria-hidden="true">AK</span>
+              <span class="cf-avatar" aria-hidden="true">RL</span>
+            </div>
+
+            <small class="max-w-sm text-sm leading-6 text-slate-400">
+              Teams across creator studios collaborate live every day.
+            </small>
+          </div>
+        </div>
+
+        <div class="cf-hero-visual" id="hero-visual">
+          <div class="cf-orb" aria-hidden="true"></div>
+
+          <div class="cf-floating-card one">
+            <div class="flex items-center justify-between gap-4">
+              <h4 class="text-lg font-black text-white">Auto Storyboard</h4>
+              <span class="cf-chip">
+                <i data-feather="star" class="h-4 w-4" aria-hidden="true"></i>
+                AI Boost
+              </span>
+            </div>
+
+            <p class="mt-3 text-sm leading-6 text-slate-300">
+              Plan camera-ready scenes with beat suggestions tailored to your niche.
+            </p>
+
+            <div class="mt-5 flex items-center justify-between text-xs font-bold text-slate-400">
+              <span>Scene map</span>
+              <span>78%</span>
+            </div>
+
+            <div class="cf-progress mt-2" aria-hidden="true">
+              <span style="width: 78%;"></span>
+            </div>
+          </div>
+
+          <div class="cf-floating-card two">
+            <div class="flex items-center justify-between gap-4">
+              <h4 class="text-lg font-black text-white">Brand Voice Sync</h4>
+              <span class="text-xs font-black uppercase tracking-[0.18em] text-cyan-100">Realtime</span>
+            </div>
+
+            <p class="mt-3 text-sm leading-6 text-slate-300">
+              Adaptive copywriting mirrors your tone while flagging off-brand phrasing instantly.
+            </p>
+
+            <div class="mt-5 grid grid-cols-3 gap-2 text-center text-xs font-bold text-slate-300">
+              <span class="rounded-full border border-cyan-300/20 bg-cyan-300/10 px-3 py-2">Tone</span>
+              <span class="rounded-full border border-purple-300/20 bg-purple-300/10 px-3 py-2">CTA</span>
+              <span class="rounded-full border border-pink-300/20 bg-pink-300/10 px-3 py-2">Hook</span>
+            </div>
+          </div>
+
+          <div class="cf-floating-card three">
+            <div class="flex items-center gap-2 text-sm leading-6 text-slate-300">
+              <i data-feather="check-circle" class="h-4 w-4 text-emerald-300" aria-hidden="true"></i>
+              One-click scheduling synced to every social calendar.
+            </div>
+
+            <div class="mt-3 flex items-center gap-2 text-sm leading-6 text-slate-300">
+              <i data-feather="check-circle" class="h-4 w-4 text-emerald-300" aria-hidden="true"></i>
+              Secure asset handoff with watermark controls.
+            </div>
+
+            <div class="mt-5 flex items-center gap-2 text-xs font-black uppercase tracking-[0.16em] text-cyan-100">
+              <span class="cf-status-dot"></span>
+              Publishing stack armed
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Features Grid -->
+    <section id="features" class="cf-dim-on-focus mb-20 grid gap-8 md:grid-cols-2 lg:grid-cols-3">
+      <div class="cf-card cf-reveal rounded-[2rem] p-8">
+        <span class="cf-chip">
+          <i data-feather="zap" class="h-4 w-4" aria-hidden="true"></i>
+          Workflow Turbo
+        </span>
+
+        <h3 class="mt-6 text-2xl font-black tracking-[-0.03em] text-white">Lightning Fast</h3>
+
+        <p class="mt-3 leading-7 text-slate-400">
+          Generate polished scripts, captions, and outlines in seconds with pre-tuned AI assistants for every format.
+        </p>
+
+        <p class="mt-5 text-sm leading-6 text-cyan-100">
+          Smart batching bundles your weekly ideas, so production never stalls.
+        </p>
+      </div>
+
+      <div class="cf-card cf-reveal rounded-[2rem] p-8">
+        <span class="cf-chip">
+          <i data-feather="layout" class="h-4 w-4" aria-hidden="true"></i>
+          Brand Kits
+        </span>
+
+        <h3 class="mt-6 text-2xl font-black tracking-[-0.03em] text-white">Smart Templates</h3>
+
+        <p class="mt-3 leading-7 text-slate-400">
+          Lock in fonts, colours, and CTAs once. CreatorFlow auto-applies them across carousels, emails, and reels.
+        </p>
+
+        <p class="mt-5 text-sm leading-6 text-cyan-100">
+          Version history makes approvals reversible without losing momentum.
+        </p>
+      </div>
+
+      <div class="cf-card cf-reveal rounded-[2rem] p-8">
+        <span class="cf-chip">
+          <i data-feather="share-2" class="h-4 w-4" aria-hidden="true"></i>
+          Omni Channel
+        </span>
+
+        <h3 class="mt-6 text-2xl font-black tracking-[-0.03em] text-white">Multi-Platform</h3>
+
+        <p class="mt-3 leading-7 text-slate-400">
+          Publish directly to TikTok, YouTube, Instagram, LinkedIn, and more from a single calendar.
+        </p>
+
+        <p class="mt-5 text-sm leading-6 text-cyan-100">
+          Time zone aware scheduling keeps launches perfectly staggered.
+        </p>
+      </div>
+
+      <div class="cf-card cf-reveal rounded-[2rem] p-8 md:col-span-2 lg:col-span-1">
+        <span class="cf-chip">
+          <i data-feather="shield" class="h-4 w-4" aria-hidden="true"></i>
+          Secure Collab
+        </span>
+
+        <h3 class="mt-6 text-2xl font-black tracking-[-0.03em] text-white">Enterprise Ready</h3>
+
+        <p class="mt-3 leading-7 text-slate-400">
+          Granular permissions, watermarking, and approval chains protect your in-progress assets.
+        </p>
+
+        <p class="mt-5 text-sm leading-6 text-cyan-100">
+          Audit trails keep every revision accountable without blocking creativity.
+        </p>
+      </div>
+
+      <div class="cf-card cf-reveal rounded-[2rem] p-8 md:col-span-2">
+        <span class="cf-chip">
+          <i data-feather="cpu" class="h-4 w-4" aria-hidden="true"></i>
+          Adaptive Intelligence
+        </span>
+
+        <h3 class="mt-6 text-2xl font-black tracking-[-0.03em] text-white">AI that learns your creative system</h3>
+
+        <p class="mt-3 max-w-3xl leading-7 text-slate-400">
+          Build reusable campaign structures, save winning hooks, and turn every post into a sharper version of your own brand logic.
+        </p>
+
+        <div class="mt-6 grid gap-3 sm:grid-cols-3">
+          <div class="rounded-2xl border border-cyan-300/15 bg-cyan-300/5 p-4">
+            <strong class="block text-white">Hook Library</strong>
+            <span class="mt-1 block text-sm text-slate-400">Reusable openers</span>
+          </div>
+
+          <div class="rounded-2xl border border-purple-300/15 bg-purple-300/5 p-4">
+            <strong class="block text-white">Tone Guard</strong>
+            <span class="mt-1 block text-sm text-slate-400">Voice consistency</span>
+          </div>
+
+          <div class="rounded-2xl border border-pink-300/15 bg-pink-300/5 p-4">
+            <strong class="block text-white">Launch Map</strong>
+            <span class="mt-1 block text-sm text-slate-400">Campaign flow</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Trust Indicators -->
+    <section class="cf-dim-on-focus cf-reveal mb-20">
+      <div class="mb-10 text-center">
+        <p class="text-sm font-black uppercase tracking-[0.3em] text-cyan-200">
+          Trusted by modern creator teams
+        </p>
+
+        <h2 class="mx-auto mt-4 max-w-3xl text-3xl font-black tracking-[-0.04em] text-white md:text-5xl">
+          Built with input from the brands audiences love.
+        </h2>
+      </div>
+
+      <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-6">
+        <div class="cf-logo-tile" aria-label="Partnership with Lumina Studios"><span>Lumina</span></div>
+        <div class="cf-logo-tile" aria-label="Partnership with Nova Agency"><span>Nova</span></div>
+        <div class="cf-logo-tile" aria-label="Partnership with StoryCraft"><span>StoryCraft</span></div>
+        <div class="cf-logo-tile" aria-label="Partnership with WaveLab"><span>WaveLab</span></div>
+        <div class="cf-logo-tile" aria-label="Partnership with Orbit Media"><span>Orbit</span></div>
+        <div class="cf-logo-tile" aria-label="Partnership with PixelShift"><span>PixelShift</span></div>
+      </div>
+    </section>
+
+    <!-- Demo Preview -->
+    <section class="cf-glass cf-reveal cf-dim-on-focus mb-16 rounded-[2rem] p-6 md:p-8">
+      <div class="grid gap-10 lg:grid-cols-2 lg:items-center">
+        <div class="space-y-5">
+          <span class="cf-badge">
+            <i data-feather="monitor" class="h-4 w-4" aria-hidden="true"></i>
+            Live Demo Preview
+          </span>
+
+          <h2 class="text-3xl font-black tracking-[-0.04em] text-white md:text-5xl">
+            See CreatorFlow in action.
+          </h2>
+
+          <p class="max-w-xl leading-8 text-slate-400">
+            Watch how teams map ideas, script episodes, and queue polished content with side-by-side collaboration tools.
+          </p>
+
+          <div class="mt-7 space-y-7" aria-label="Typical CreatorFlow process">
+            <div class="cf-timeline-step">
+              <h3 class="text-lg font-black text-white">1. Ideate with AI</h3>
+              <p class="mt-2 leading-7 text-slate-400">
+                Drop your brief and receive ready-to-shoot scripts, hooks, and thumbnail suggestions instantly.
+              </p>
+            </div>
+
+            <div class="cf-timeline-step">
+              <h3 class="text-lg font-black text-white">2. Collaborate securely</h3>
+              <p class="mt-2 leading-7 text-slate-400">
+                Assign stakeholders, collect annotated feedback, and approve revisions without email chains.
+              </p>
+            </div>
+
+            <div class="cf-timeline-step">
+              <h3 class="text-lg font-black text-white">3. Publish everywhere</h3>
+              <p class="mt-2 leading-7 text-slate-400">
+                Schedule multi-channel launches with performance presets and automated reposting.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div class="rounded-[2rem] bg-gradient-to-br from-cyan-300 via-blue-400 to-purple-500 p-[1px] shadow-glowPurple">
+          <div class="rounded-[calc(2rem-1px)] bg-slate-950/90 p-6 md:p-7">
+            <div class="flex items-center justify-between gap-4">
+              <div>
+                <p class="text-xs font-black uppercase tracking-[0.22em] text-cyan-200">
+                  Control Room
+                </p>
+
+                <h3 class="mt-2 text-xl font-black text-white">
+                  Live campaign dashboard
+                </h3>
+              </div>
+
+              <span class="cf-chip">
+                <i data-feather="activity" class="h-4 w-4" aria-hidden="true"></i>
+                Realtime
+              </span>
+            </div>
+
+            <div class="mt-8 space-y-6">
+              <div>
+                <div class="mb-2 flex items-center justify-between text-sm text-slate-300">
+                  <span>Approval progress</span>
+                  <span class="font-black text-cyan-200">82%</span>
+                </div>
+                <div class="cf-progress" aria-hidden="true"><span style="width: 82%;"></span></div>
+              </div>
+
+              <div class="grid gap-4 sm:grid-cols-2">
+                <div class="rounded-3xl border border-cyan-300/15 bg-cyan-300/5 p-5">
+                  <span class="text-sm text-slate-400">Scheduled posts</span>
+                  <strong class="mt-2 block text-4xl font-black tracking-[-0.06em] text-white">18</strong>
+                </div>
+
+                <div class="rounded-3xl border border-purple-300/15 bg-purple-300/5 p-5">
+                  <span class="text-sm text-slate-400">Channels synced</span>
+                  <strong class="mt-2 block text-4xl font-black tracking-[-0.06em] text-white">9</strong>
+                </div>
+              </div>
+
+              <div class="rounded-3xl border border-emerald-300/15 bg-emerald-300/5 p-5">
+                <div class="flex items-start gap-3">
+                  <i data-feather="lock" class="mt-1 h-5 w-5 text-emerald-300" aria-hidden="true"></i>
+                  <p class="text-sm leading-7 text-slate-300">
+                    Protected by role-based access and watermark controls for every collaborator.
+                  </p>
+                </div>
+              </div>
+
+              <div class="rounded-3xl border border-slate-700/60 bg-slate-900/60 p-5">
+                <p class="text-xs font-black uppercase tracking-[0.2em] text-slate-500">Next action</p>
+                <p class="mt-2 text-sm leading-7 text-slate-300">
+                  Finalise carousel copy, push approval request, and schedule launch sequence.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- CTA Banner -->
+    <section class="cf-glass cf-reveal mb-20 rounded-[2rem] p-6 md:p-9">
+      <div class="relative z-10 flex flex-col gap-7 lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <p class="text-xs font-black uppercase tracking-[0.24em] text-cyan-200">
+            CreatorFlow Studio 2.0
+          </p>
+
+          <h2 class="mt-3 max-w-4xl text-3xl font-black tracking-[-0.05em] text-white md:text-5xl">
+            Ready to deliver high-performing content without the burnout?
+          </h2>
+
+          <p class="mt-4 max-w-3xl leading-8 text-slate-400">
+            Spin up your workspace in under two minutes and bring your team, clients, and freelancers together with consistent branding guardrails.
+          </p>
+        </div>
+
+        <div class="flex flex-col gap-4 sm:flex-row lg:flex-col xl:flex-row">
+          <a
+            href="signup.html"
+            class="cf-button inline-flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-cyan-300 via-blue-400 to-purple-400 px-8 py-4 font-black text-slate-950 shadow-glow"
+            aria-label="Start your free workspace"
+          >
+            <i data-feather="arrow-up-right" class="h-5 w-5" aria-hidden="true"></i>
+            Launch your workspace
+          </a>
+
+          <a
+            href="help.html"
+            class="cf-button cf-outline-button inline-flex items-center justify-center gap-2 rounded-2xl px-8 py-4 font-black"
+            aria-label="View onboarding resources"
+          >
+            <i data-feather="book-open" class="h-5 w-5" aria-hidden="true"></i>
+            View onboarding resources
+          </a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div id="cf-toast" class="cf-toast" role="status" aria-live="polite"></div>
+
+  <custom-footer></custom-footer>
+
+  <script src="assets/js/runtime-config.js"></script>
+  <script type="module" src="assets/js/editor.js"></script>
+  <script src="script.js"></script>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      if (window.feather) {
+        feather.replace();
+      }
+
+      const toast = document.getElementById('cf-toast');
+      const focusButton = document.getElementById('focus-demo-button');
+      const heroVisual = document.getElementById('hero-visual');
+      const revealItems = document.querySelectorAll('.cf-reveal');
+
+      let toastTimer = null;
+
+      function showToast(message) {
+        if (!toast) {
+          return;
+        }
+
+        toast.textContent = message;
+        toast.dataset.visible = 'true';
+
+        if (toastTimer) {
+          window.clearTimeout(toastTimer);
+        }
+
+        toastTimer = window.setTimeout(() => {
+          toast.dataset.visible = 'false';
+        }, 2200);
+      }
+
+      if ('IntersectionObserver' in window) {
+        const observer = new IntersectionObserver((entries) => {
+          entries.forEach((entry) => {
+            if (entry.isIntersecting) {
+              entry.target.classList.add('is-visible');
+              observer.unobserve(entry.target);
+            }
+          });
+        }, { threshold: 0.16 });
+
+        revealItems.forEach((item) => observer.observe(item));
+      } else {
+        revealItems.forEach((item) => item.classList.add('is-visible'));
+      }
+
+      if (focusButton) {
+        focusButton.addEventListener('click', () => {
+          document.body.classList.toggle('cf-focus-mode');
+
+          const active = document.body.classList.contains('cf-focus-mode');
+
+          focusButton.innerHTML = active
+            ? '<i data-feather="eye" class="h-5 w-5" aria-hidden="true"></i> Focus Active'
+            : '<i data-feather="target" class="h-5 w-5" aria-hidden="true"></i> Focus Demo';
+
+          showToast(active ? 'Focus mode active.' : 'Focus mode cleared.');
+
+          if (window.feather) {
+            feather.replace();
+          }
+
+          if (active) {
+            document.getElementById('features')?.scrollIntoView({
+              behavior: 'smooth',
+              block: 'start'
+            });
+          }
+        });
+      }
+
+      if (heroVisual) {
+        heroVisual.addEventListener('mousemove', (event) => {
+          const rect = heroVisual.getBoundingClientRect();
+          const x = ((event.clientX - rect.left) / rect.width - 0.5) * 18;
+          const y = ((event.clientY - rect.top) / rect.height - 0.5) * 18;
+
+          heroVisual.style.setProperty('--tilt-x', `${x}deg`);
+          heroVisual.style.setProperty('--tilt-y', `${y}deg`);
+
+          heroVisual.querySelectorAll('.cf-floating-card').forEach((card, index) => {
+            const depth = (index + 1) * 3;
+
+            card.style.transform = `translate3d(${x / depth}px, ${y / depth}px, 0)`;
+          });
+        });
+
+        heroVisual.addEventListener('mouseleave', () => {
+          heroVisual.querySelectorAll('.cf-floating-card').forEach((card) => {
+            card.style.transform = '';
+          });
+        });
+      }
+    });
+  </script>
+</body>
+</html>
+```

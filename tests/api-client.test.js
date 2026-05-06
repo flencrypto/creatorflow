@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { afterEach, beforeEach, describe, it } from 'node:test';
-import { createApiClient } from '../assets/js/api-client.js';
+import { createApiClient } from '../public/assets/js/api-client.js';
 
 const jsonResponse = (body, { status = 200 } = {}) =>
     new Response(JSON.stringify(body), {

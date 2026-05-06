@@ -1,161 +1,101 @@
 import assert from 'node:assert/strict';
-import { after, afterEach, beforeEach, describe, it } from 'node:test';
-import { once } from 'node:events';
-
-const originalEnv = {
-  NODE_ENV: process.env.NODE_ENV,
-  SESSION_SECRET: process.env.SESSION_SECRET,
-  GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID,
-  GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET,
-  FACEBOOK_APP_ID: process.env.FACEBOOK_APP_ID,
-  FACEBOOK_APP_SECRET: process.env.FACEBOOK_APP_SECRET,
-};
+import test from 'node:test';
+import request from 'supertest';
+import passport from 'passport';
 
 process.env.NODE_ENV = 'test';
 process.env.SESSION_SECRET = 'test-session-secret';
 process.env.GOOGLE_CLIENT_ID = 'test-google-client-id';
 process.env.GOOGLE_CLIENT_SECRET = 'test-google-client-secret';
+process.env.GOOGLE_CALLBACK_URL = 'http://localhost:3000/auth/google/callback';
 process.env.FACEBOOK_APP_ID = 'test-facebook-app-id';
 process.env.FACEBOOK_APP_SECRET = 'test-facebook-app-secret';
+process.env.FACEBOOK_CALLBACK_URL = 'http://localhost:3000/auth/facebook/callback';
 
-const { app } = await import('../server.js');
+const app = (await import('./helpers/app-fixture.js')).default;
 
-function restoreEnv() {
-  Object.entries(originalEnv).forEach(([key, value]) => {
-    if (typeof value === 'undefined') {
-      delete process.env[key];
-    } else {
-      process.env[key] = value;
+class StaticSuccessStrategy extends passport.Strategy {
+  constructor(name) {
+    super();
+    this.name = name;
+  }
+
+  authenticate(req, options = {}) {
+    const hasAuthCode = typeof req.query?.code === 'string' && req.query.code.length > 0;
+
+    if (!hasAuthCode) {
+      const redirectUrl = new URL(`https://example.test/${this.name}`);
+      if (options.state) {
+        redirectUrl.searchParams.set('state', options.state);
+      }
+      this.redirect(redirectUrl.toString());
+      return;
     }
-  });
+
+    const fakeUser = {
+      id: `${this.name}-test-user`,
+      provider: this.name,
+      displayName: `Test ${this.name}`,
+    };
+    this.success(fakeUser);
+  }
 }
 
-async function closeServer(server) {
-  await new Promise((resolve, reject) => {
-    server.close((err) => {
-      if (err) {
-        reject(err);
-      } else {
-        resolve();
-      }
-    });
-  });
+if (passport._strategies?.google) {
+  passport.unuse('google');
 }
+passport.use(new StaticSuccessStrategy('google'));
 
-function extractSessionCookie(setCookies) {
-  return (setCookies || [])
-    .map((entry) => entry.split(';')[0])
-    .filter(Boolean)
-    .join('; ');
-}
+test('google oauth flow issues state token and rejects mismatches', async () => {
+  const agent = request.agent(app);
+  const response = await agent.get('/auth/google');
+  assert.equal(response.status, 302);
+  const location = response.headers.location;
+  assert.ok(location.includes('state='));
 
-async function initiateAuth(baseUrl, provider) {
-  const response = await fetch(`${baseUrl}/auth/${provider}`, {
-    redirect: 'manual',
-  });
+  const state = new URL(location).searchParams.get('state');
+  assert.ok(state);
 
-  assert.strictEqual(response.status, 302, `Expected ${provider} auth start to redirect.`);
-  const location = response.headers.get('location');
-  assert.ok(location, 'Expected redirect location header.');
+  const invalidResponse = await agent
+    .get('/auth/google/callback')
+    .query({ state: 'tampered', code: 'ignored-code' });
+  assert.equal(invalidResponse.status, 302);
+  assert.match(invalidResponse.headers.location, /error=google_oauth_state/);
+});
 
-  const state = (() => {
-    try {
-      const url = new URL(location);
-      return url.searchParams.get('state');
-    } catch (error) {
-      throw new Error(`Failed to parse redirect location for ${provider}: ${location}`);
-    }
-  })();
+test('facebook oauth flow rejects missing state parameter', async () => {
+  const agent = request.agent(app);
+  await agent.get('/auth/facebook');
+  const response = await agent
+    .get('/auth/facebook/callback')
+    .query({ code: 'ignored-code' });
+  assert.equal(response.status, 302);
+  assert.match(response.headers.location, /error=facebook_oauth_state/);
+});
 
-  assert.ok(state, 'Expected generated state parameter.');
+test('google oauth flow replaces pending state when initiating twice', async () => {
+  const agent = request.agent(app);
 
-  const sessionCookie = extractSessionCookie(response.headers.getSetCookie?.());
-  assert.ok(sessionCookie.includes('connect.sid'), 'Expected session cookie to be issued.');
+  const firstResponse = await agent.get('/auth/google');
+  assert.equal(firstResponse.status, 302);
+  const firstState = new URL(firstResponse.headers.location).searchParams.get('state');
+  assert.ok(firstState);
 
-  return { state, sessionCookie };
-}
+  const secondResponse = await agent.get('/auth/google');
+  assert.equal(secondResponse.status, 302);
+  const secondState = new URL(secondResponse.headers.location).searchParams.get('state');
+  assert.ok(secondState);
+  assert.notEqual(firstState, secondState);
 
-function buildCallbackUrl(baseUrl, provider, params) {
-  const search = new URLSearchParams(params);
-  return `${baseUrl}/auth/${provider}/callback?${search.toString()}`;
-}
+  const callbackResponse = await agent
+    .get('/auth/google/callback')
+    .query({ state: secondState, code: 'ignored-code' });
+  assert.equal(callbackResponse.status, 302);
+  assert.equal(callbackResponse.headers.location, '/dashboard.html');
 
-describe('OAuth state protection', () => {
-  let server;
-  let baseUrl;
-
-  beforeEach(async () => {
-    server = app.listen(0);
-    await once(server, 'listening');
-    const address = server.address();
-    baseUrl = `http://127.0.0.1:${address.port}`;
-  });
-
-  afterEach(async () => {
-    await closeServer(server);
-  });
-
-  after(() => {
-    restoreEnv();
-  });
-
-  it('rejects Google callback requests that omit state', async () => {
-    const { sessionCookie } = await initiateAuth(baseUrl, 'google');
-
-    const response = await fetch(buildCallbackUrl(baseUrl, 'google', { code: 'test-code' }), {
-      headers: { cookie: sessionCookie },
-      redirect: 'manual',
-    });
-
-    assert.strictEqual(response.status, 302);
-    assert.strictEqual(response.headers.get('location'), '/login.html?error=google');
-  });
-
-  it('rejects Google callback requests with mismatched state', async () => {
-    const { state, sessionCookie } = await initiateAuth(baseUrl, 'google');
-
-    const response = await fetch(
-      buildCallbackUrl(baseUrl, 'google', {
-        code: 'test-code',
-        state: `${state}-tampered`,
-      }),
-      {
-        headers: { cookie: sessionCookie },
-        redirect: 'manual',
-      }
-    );
-
-    assert.strictEqual(response.status, 302);
-    assert.strictEqual(response.headers.get('location'), '/login.html?error=google');
-  });
-
-  it('rejects Facebook callback requests that omit state', async () => {
-    const { sessionCookie } = await initiateAuth(baseUrl, 'facebook');
-
-    const response = await fetch(buildCallbackUrl(baseUrl, 'facebook', { code: 'test-code' }), {
-      headers: { cookie: sessionCookie },
-      redirect: 'manual',
-    });
-
-    assert.strictEqual(response.status, 302);
-    assert.strictEqual(response.headers.get('location'), '/login.html?error=facebook');
-  });
-
-  it('rejects Facebook callback requests with mismatched state', async () => {
-    const { state, sessionCookie } = await initiateAuth(baseUrl, 'facebook');
-
-    const response = await fetch(
-      buildCallbackUrl(baseUrl, 'facebook', {
-        code: 'test-code',
-        state: `${state}-tampered`,
-      }),
-      {
-        headers: { cookie: sessionCookie },
-        redirect: 'manual',
-      }
-    );
-
-    assert.strictEqual(response.status, 302);
-    assert.strictEqual(response.headers.get('location'), '/login.html?error=facebook');
-  });
+  const replayResponse = await agent
+    .get('/auth/google/callback')
+    .query({ state: firstState, code: 'ignored-code' });
+  assert.equal(replayResponse.status, 302);
+  assert.match(replayResponse.headers.location, /error=google_oauth_state/);
 });

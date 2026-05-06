@@ -1,0 +1,783 @@
+```html
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <title>Dashboard - CreatorFlow Studio</title>
+
+  <link rel="manifest" href="/manifest.json" />
+  <meta name="theme-color" content="#020617" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="CreatorFlow" />
+  <link rel="icon" type="image/x-icon" href="/static/favicon.ico" />
+
+  <link rel="stylesheet" href="style.css" />
+
+  <script>
+    tailwind = {
+      config: {
+        theme: {
+          extend: {
+            fontFamily: {
+              display: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+            },
+            boxShadow: {
+              glow: '0 0 40px rgba(34, 211, 238, 0.18)',
+              panel: '0 30px 90px rgba(0, 0, 0, 0.34)',
+            },
+            animation: {
+              float: 'float 5s ease-in-out infinite',
+              pulseSoft: 'pulseSoft 2.4s ease-in-out infinite',
+              scan: 'scan 4s linear infinite',
+              orbit: 'orbit 14s linear infinite',
+            },
+            keyframes: {
+              float: {
+                '0%, 100%': { transform: 'translateY(0)' },
+                '50%': { transform: 'translateY(-10px)' },
+              },
+              pulseSoft: {
+                '0%, 100%': { opacity: '0.55', transform: 'scale(1)' },
+                '50%': { opacity: '1', transform: 'scale(1.04)' },
+              },
+              scan: {
+                '0%': { transform: 'translateX(-110%)' },
+                '100%': { transform: 'translateX(110%)' },
+              },
+              orbit: {
+                '0%': { transform: 'rotate(0deg)' },
+                '100%': { transform: 'rotate(360deg)' },
+              },
+            },
+          },
+        },
+      },
+    };
+  </script>
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/feather-icons"></script>
+
+  <script src="components/navbar.js"></script>
+  <script src="components/footer.js"></script>
+  <script src="components/dashboard-stats.js"></script>
+  <script src="components/project-card.js"></script>
+
+  <style>
+    :root {
+      --cf-bg: #020617;
+      --cf-panel: rgba(15, 23, 42, 0.72);
+      --cf-panel-strong: rgba(15, 23, 42, 0.92);
+      --cf-border: rgba(125, 211, 252, 0.22);
+      --cf-border-hot: rgba(34, 211, 238, 0.55);
+      --cf-text: #eef8ff;
+      --cf-muted: #93a4b8;
+      --cf-cyan: #22d3ee;
+      --cf-blue: #60a5fa;
+      --cf-purple: #a78bfa;
+      --cf-green: #34d399;
+      --cf-orange: #fb923c;
+      --cf-rose: #fb7185;
+    }
+
+    body {
+      min-height: 100vh;
+      color: var(--cf-text);
+      background:
+        radial-gradient(circle at 8% 12%, rgba(34, 211, 238, 0.24), transparent 32%),
+        radial-gradient(circle at 88% 8%, rgba(167, 139, 250, 0.23), transparent 34%),
+        radial-gradient(circle at 52% 96%, rgba(52, 211, 153, 0.12), transparent 40%),
+        linear-gradient(135deg, #020617 0%, #08111f 45%, #111827 100%);
+      overflow-x: hidden;
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 0;
+      background-image:
+        linear-gradient(rgba(125, 211, 252, 0.055) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(125, 211, 252, 0.055) 1px, transparent 1px);
+      background-size: 46px 46px;
+      mask-image: radial-gradient(circle at center, black, transparent 78%);
+      animation: gridDrift 18s linear infinite;
+    }
+
+    body::after {
+      content: "";
+      position: fixed;
+      inset: -20%;
+      pointer-events: none;
+      z-index: 0;
+      background:
+        conic-gradient(
+          from 180deg,
+          transparent,
+          rgba(34, 211, 238, 0.08),
+          transparent,
+          rgba(167, 139, 250, 0.09),
+          transparent
+        );
+      filter: blur(38px);
+      animation: auroraSpin 28s linear infinite;
+    }
+
+    custom-navbar,
+    custom-footer,
+    main {
+      position: relative;
+      z-index: 1;
+    }
+
+    .glass-panel {
+      position: relative;
+      overflow: hidden;
+      border: 1px solid var(--cf-border);
+      background:
+        linear-gradient(145deg, rgba(15, 23, 42, 0.88), rgba(2, 6, 23, 0.66)),
+        radial-gradient(circle at top left, rgba(34, 211, 238, 0.16), transparent 36%);
+      box-shadow: 0 30px 90px rgba(0, 0, 0, 0.35);
+      backdrop-filter: blur(18px);
+    }
+
+    .glass-panel::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.075), transparent);
+      transform: translateX(-120%);
+      animation: panelSweep 6s ease-in-out infinite;
+    }
+
+    .glass-panel > * {
+      position: relative;
+      z-index: 1;
+    }
+
+    .holo-card {
+      border: 1px solid rgba(125, 211, 252, 0.18);
+      background:
+        linear-gradient(180deg, rgba(15, 23, 42, 0.84), rgba(2, 6, 23, 0.72)),
+        radial-gradient(circle at 20% 0%, rgba(34, 211, 238, 0.12), transparent 36%);
+      box-shadow:
+        0 22px 60px rgba(0, 0, 0, 0.28),
+        inset 0 1px 0 rgba(255, 255, 255, 0.045);
+      transition:
+        transform 220ms ease,
+        border-color 220ms ease,
+        box-shadow 220ms ease,
+        background 220ms ease;
+    }
+
+    .holo-card:hover {
+      transform: translateY(-5px);
+      border-color: rgba(34, 211, 238, 0.48);
+      box-shadow:
+        0 30px 80px rgba(0, 0, 0, 0.36),
+        0 0 34px rgba(34, 211, 238, 0.14);
+    }
+
+    .command-button {
+      border: 1px solid rgba(125, 211, 252, 0.2);
+      background:
+        linear-gradient(145deg, rgba(15, 23, 42, 0.78), rgba(2, 6, 23, 0.7)),
+        radial-gradient(circle at top left, rgba(34, 211, 238, 0.13), transparent 34%);
+      transition:
+        transform 180ms ease,
+        border-color 180ms ease,
+        box-shadow 180ms ease,
+        filter 180ms ease;
+    }
+
+    .command-button:hover {
+      transform: translateY(-3px) scale(1.015);
+      border-color: rgba(34, 211, 238, 0.5);
+      box-shadow: 0 22px 55px rgba(34, 211, 238, 0.12);
+      filter: brightness(1.06);
+    }
+
+    .orbital-core {
+      position: relative;
+      width: 188px;
+      height: 188px;
+      border-radius: 999px;
+      border: 1px solid rgba(34, 211, 238, 0.28);
+      box-shadow:
+        inset 0 0 36px rgba(34, 211, 238, 0.12),
+        0 0 44px rgba(34, 211, 238, 0.12);
+    }
+
+    .orbital-core::before,
+    .orbital-core::after {
+      content: "";
+      position: absolute;
+      inset: 20px;
+      border-radius: 999px;
+      border: 1px dashed rgba(167, 139, 250, 0.46);
+      animation: orbit 14s linear infinite;
+    }
+
+    .orbital-core::after {
+      inset: 48px;
+      border-style: solid;
+      border-color: rgba(96, 165, 250, 0.34);
+      animation-duration: 9s;
+      animation-direction: reverse;
+    }
+
+    .orbital-centre {
+      position: absolute;
+      inset: 66px;
+      display: grid;
+      place-items: center;
+      border-radius: 999px;
+      color: #04111f;
+      font-weight: 950;
+      letter-spacing: 0.12em;
+      background:
+        radial-gradient(circle, rgba(255, 255, 255, 0.94), rgba(34, 211, 238, 0.76) 36%, rgba(14, 165, 233, 0.08) 72%);
+      box-shadow: 0 0 36px rgba(34, 211, 238, 0.56);
+    }
+
+    .status-dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 999px;
+      background: var(--cf-green);
+      box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.65);
+      animation: pulseDot 1.7s ease-out infinite;
+    }
+
+    .metric-bar {
+      height: 7px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: rgba(148, 163, 184, 0.14);
+    }
+
+    .metric-bar > span {
+      display: block;
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, var(--cf-cyan), var(--cf-purple));
+    }
+
+    .quick-action-active {
+      border-color: rgba(34, 211, 238, 0.66) !important;
+      box-shadow:
+        0 30px 80px rgba(0, 0, 0, 0.38),
+        0 0 44px rgba(34, 211, 238, 0.22) !important;
+    }
+
+    #analysis-content,
+    #analysis-platform,
+    #analysis-goals {
+      color: #eef8ff;
+      border-color: rgba(125, 211, 252, 0.22);
+      background:
+        linear-gradient(180deg, rgba(15, 23, 42, 0.86), rgba(2, 6, 23, 0.78));
+      box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.045),
+        0 0 0 0 rgba(34, 211, 238, 0);
+      transition:
+        border-color 180ms ease,
+        box-shadow 180ms ease,
+        transform 180ms ease;
+    }
+
+    #analysis-content::placeholder,
+    #analysis-platform::placeholder,
+    #analysis-goals::placeholder {
+      color: rgba(203, 213, 225, 0.52);
+    }
+
+    #analysis-content:focus,
+    #analysis-platform:focus,
+    #analysis-goals:focus {
+      border-color: var(--cf-border-hot);
+      box-shadow: 0 0 0 4px rgba(34, 211, 238, 0.1);
+      transform: translateY(-1px);
+    }
+
+    #analysis-result {
+      border: 1px solid rgba(125, 211, 252, 0.18);
+      border-radius: 24px;
+      background:
+        linear-gradient(180deg, rgba(2, 6, 23, 0.72), rgba(15, 23, 42, 0.72));
+      overflow: hidden;
+    }
+
+    #analysis-output {
+      color: #eaf8ff;
+      border-color: rgba(125, 211, 252, 0.15);
+      background:
+        linear-gradient(180deg, rgba(2, 6, 23, 0.72), rgba(15, 23, 42, 0.66));
+    }
+
+    @keyframes gridDrift {
+      from {
+        background-position: 0 0;
+      }
+      to {
+        background-position: 46px 46px;
+      }
+    }
+
+    @keyframes auroraSpin {
+      from {
+        transform: rotate(0deg) scale(1.08);
+      }
+      to {
+        transform: rotate(360deg) scale(1.08);
+      }
+    }
+
+    @keyframes panelSweep {
+      0%, 56% {
+        transform: translateX(-120%);
+      }
+      76%, 100% {
+        transform: translateX(120%);
+      }
+    }
+
+    @keyframes pulseDot {
+      0% {
+        box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.62);
+      }
+      70% {
+        box-shadow: 0 0 0 13px rgba(52, 211, 153, 0);
+      }
+      100% {
+        box-shadow: 0 0 0 0 rgba(52, 211, 153, 0);
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        animation-duration: 0.001ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.001ms !important;
+        scroll-behavior: auto !important;
+      }
+    }
+  </style>
+</head>
+
+<body class="min-h-screen font-display antialiased">
+  <custom-navbar></custom-navbar>
+
+  <main class="container mx-auto mt-16 px-4 py-8 lg:px-6">
+    <!-- Futuristic Page Header -->
+    <section class="glass-panel rounded-[2rem] p-6 md:p-8 lg:p-10">
+      <div class="grid gap-8 lg:grid-cols-[1.35fr_0.65fr] lg:items-center">
+        <div>
+          <div class="mb-5 inline-flex items-center gap-3 rounded-full border border-cyan-300/25 bg-cyan-300/10 px-4 py-2 text-xs font-black uppercase tracking-[0.22em] text-cyan-100">
+            <span class="status-dot"></span>
+            CreatorFlow Studio Live
+          </div>
+
+          <h1 class="max-w-4xl text-4xl font-black leading-[0.95] tracking-[-0.06em] text-white md:text-6xl lg:text-7xl">
+            Command your
+            <span class="bg-gradient-to-r from-cyan-200 via-blue-200 to-purple-200 bg-clip-text text-transparent">
+              content engine.
+            </span>
+          </h1>
+
+          <p class="mt-6 max-w-3xl text-base leading-8 text-slate-300 md:text-lg">
+            Welcome back. Track projects, launch content, review performance, and run AI coaching from one high-speed creative control room.
+          </p>
+
+          <div class="mt-7 flex flex-wrap gap-3">
+            <a
+              href="editor.html"
+              class="inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-cyan-300 via-blue-400 to-purple-400 px-6 py-3 text-sm font-black text-slate-950 shadow-glow transition duration-300 hover:-translate-y-1 hover:brightness-110 focus:outline-none focus:ring-2 focus:ring-cyan-300"
+            >
+              <i data-feather="plus-circle" class="h-4 w-4"></i>
+              New Project
+            </a>
+
+            <a
+              href="#content-analyzer"
+              class="command-button inline-flex items-center gap-2 rounded-2xl px-6 py-3 text-sm font-bold text-cyan-50"
+            >
+              <i data-feather="cpu" class="h-4 w-4"></i>
+              Open AI Coach
+            </a>
+
+            <button
+              type="button"
+              id="focus-mode-button"
+              class="command-button inline-flex items-center gap-2 rounded-2xl px-6 py-3 text-sm font-bold text-cyan-50"
+            >
+              <i data-feather="target" class="h-4 w-4"></i>
+              Focus Mode
+            </button>
+          </div>
+        </div>
+
+        <aside class="grid place-items-center rounded-[1.6rem] border border-cyan-300/20 bg-slate-950/35 p-8">
+          <div class="orbital-core animate-float">
+            <span class="orbital-centre text-xs">AI</span>
+            <span class="absolute left-1/2 top-3 h-3 w-3 rounded-full bg-cyan-300 shadow-[0_0_20px_rgba(34,211,238,0.9)]"></span>
+            <span class="absolute bottom-8 right-6 h-3 w-3 rounded-full bg-purple-300 shadow-[0_0_20px_rgba(167,139,250,0.9)]"></span>
+            <span class="absolute bottom-12 left-5 h-3 w-3 rounded-full bg-emerald-300 shadow-[0_0_20px_rgba(52,211,153,0.9)]"></span>
+          </div>
+
+          <div class="mt-7 text-center">
+            <p class="text-sm font-black uppercase tracking-[0.2em] text-cyan-100">System Status</p>
+            <p id="live-clock" class="mt-2 text-sm text-slate-400">Loading local time...</p>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <!-- Intelligence Strip -->
+    <section class="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <article class="holo-card rounded-3xl p-5">
+        <div class="flex items-center justify-between">
+          <p class="text-xs font-black uppercase tracking-[0.18em] text-slate-400">Creative Pulse</p>
+          <i data-feather="activity" class="h-5 w-5 text-cyan-300"></i>
+        </div>
+        <p class="mt-4 text-3xl font-black tracking-[-0.04em] text-white">92%</p>
+        <p class="mt-1 text-sm text-slate-400">Workflow readiness</p>
+        <div class="metric-bar mt-4"><span style="width: 92%;"></span></div>
+      </article>
+
+      <article class="holo-card rounded-3xl p-5">
+        <div class="flex items-center justify-between">
+          <p class="text-xs font-black uppercase tracking-[0.18em] text-slate-400">Content Queue</p>
+          <i data-feather="layers" class="h-5 w-5 text-purple-300"></i>
+        </div>
+        <p class="mt-4 text-3xl font-black tracking-[-0.04em] text-white">18</p>
+        <p class="mt-1 text-sm text-slate-400">Drafts and active ideas</p>
+        <div class="metric-bar mt-4"><span style="width: 72%;"></span></div>
+      </article>
+
+      <article class="holo-card rounded-3xl p-5">
+        <div class="flex items-center justify-between">
+          <p class="text-xs font-black uppercase tracking-[0.18em] text-slate-400">AI Reviews</p>
+          <i data-feather="message-circle" class="h-5 w-5 text-emerald-300"></i>
+        </div>
+        <p class="mt-4 text-3xl font-black tracking-[-0.04em] text-white">47</p>
+        <p class="mt-1 text-sm text-slate-400">Suggestions generated</p>
+        <div class="metric-bar mt-4"><span style="width: 84%;"></span></div>
+      </article>
+
+      <article class="holo-card rounded-3xl p-5">
+        <div class="flex items-center justify-between">
+          <p class="text-xs font-black uppercase tracking-[0.18em] text-slate-400">Growth Signal</p>
+          <i data-feather="trending-up" class="h-5 w-5 text-orange-300"></i>
+        </div>
+        <p class="mt-4 text-3xl font-black tracking-[-0.04em] text-white">+24%</p>
+        <p class="mt-1 text-sm text-slate-400">Momentum this cycle</p>
+        <div class="metric-bar mt-4"><span style="width: 78%;"></span></div>
+      </article>
+    </section>
+
+    <!-- Existing Stats Component -->
+    <section class="mt-10">
+      <div class="mb-5 flex items-end justify-between gap-4">
+        <div>
+          <p class="text-xs font-black uppercase tracking-[0.22em] text-cyan-200">Overview</p>
+          <h2 class="mt-2 text-2xl font-black tracking-[-0.03em] text-white md:text-3xl">Studio Metrics</h2>
+        </div>
+      </div>
+
+      <div class="glass-panel rounded-[2rem] p-4 md:p-6">
+        <dashboard-stats></dashboard-stats>
+      </div>
+    </section>
+
+    <!-- Main Grid -->
+    <section class="mt-10 grid gap-8 xl:grid-cols-[1.15fr_0.85fr]">
+      <!-- Recent Projects -->
+      <section class="glass-panel rounded-[2rem] p-5 md:p-7">
+        <div class="mb-6 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+          <div>
+            <p class="text-xs font-black uppercase tracking-[0.22em] text-purple-200">Active Work</p>
+            <h2 class="mt-2 text-2xl font-black tracking-[-0.03em] text-white">Recent Projects</h2>
+          </div>
+
+          <a href="editor.html" class="text-sm font-bold text-cyan-200 transition hover:text-white">
+            View all projects →
+          </a>
+        </div>
+
+        <div class="grid gap-5 md:grid-cols-2 2xl:grid-cols-3">
+          <div class="holo-card rounded-3xl p-1">
+            <project-card></project-card>
+          </div>
+
+          <div class="holo-card rounded-3xl p-1">
+            <project-card></project-card>
+          </div>
+
+          <div class="holo-card rounded-3xl p-1">
+            <project-card></project-card>
+          </div>
+        </div>
+      </section>
+
+      <!-- Launch Panel -->
+      <aside class="glass-panel rounded-[2rem] p-5 md:p-7">
+        <div>
+          <p class="text-xs font-black uppercase tracking-[0.22em] text-cyan-200">Launch Panel</p>
+          <h2 class="mt-2 text-2xl font-black tracking-[-0.03em] text-white">Quick Actions</h2>
+          <p class="mt-2 text-sm leading-6 text-slate-400">
+            Jump straight into the next move. Each action is wired for fast creative flow.
+          </p>
+        </div>
+
+        <div class="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
+          <a href="editor.html" class="quick-action command-button rounded-3xl p-5" data-action="Start Writing">
+            <div class="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl border border-purple-300/25 bg-purple-300/10">
+              <i data-feather="edit-3" class="text-purple-200"></i>
+            </div>
+            <h3 class="text-lg font-black text-white">Start Writing</h3>
+            <p class="mt-2 text-sm text-slate-400">Create fresh content</p>
+          </a>
+
+          <a href="templates.html" class="quick-action command-button rounded-3xl p-5" data-action="Use Template">
+            <div class="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl border border-blue-300/25 bg-blue-300/10">
+              <i data-feather="copy" class="text-blue-200"></i>
+            </div>
+            <h3 class="text-lg font-black text-white">Use Template</h3>
+            <p class="mt-2 text-sm text-slate-400">Start from proven formats</p>
+          </a>
+
+          <a href="exports.html" class="quick-action command-button rounded-3xl p-5" data-action="Export">
+            <div class="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl border border-emerald-300/25 bg-emerald-300/10">
+              <i data-feather="upload" class="text-emerald-200"></i>
+            </div>
+            <h3 class="text-lg font-black text-white">Export</h3>
+            <p class="mt-2 text-sm text-slate-400">Publish and package</p>
+          </a>
+
+          <a href="analytics.html" class="quick-action command-button rounded-3xl p-5" data-action="Analytics">
+            <div class="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl border border-orange-300/25 bg-orange-300/10">
+              <i data-feather="bar-chart-2" class="text-orange-200"></i>
+            </div>
+            <h3 class="text-lg font-black text-white">Analytics</h3>
+            <p class="mt-2 text-sm text-slate-400">Review performance</p>
+          </a>
+        </div>
+      </aside>
+    </section>
+
+    <!-- AI Content Coach -->
+    <section class="mt-10" id="content-analyzer">
+      <div class="glass-panel rounded-[2rem] p-5 md:p-8">
+        <div class="flex flex-col gap-5 md:flex-row md:items-start md:justify-between">
+          <div>
+            <p class="text-xs font-black uppercase tracking-[0.22em] text-cyan-200">AI Content Coach</p>
+            <h2 class="mt-2 text-2xl font-black tracking-[-0.03em] text-white md:text-3xl">
+              Turn raw posts into sharper creative.
+            </h2>
+            <p class="mt-3 max-w-2xl text-sm leading-7 text-slate-400 md:text-base">
+              Paste a caption, script, advert, post, or launch idea and get tactical feedback tailored to the platform and outcome.
+            </p>
+          </div>
+
+          <div class="inline-flex items-center gap-2 self-start rounded-full border border-cyan-300/25 bg-cyan-300/10 px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-cyan-100">
+            <i data-feather="zap" class="h-4 w-4"></i>
+            Powered by CreatorFlow AI
+          </div>
+        </div>
+
+        <form id="analysis-form" class="mt-7 grid gap-5">
+          <div>
+            <label for="analysis-content" class="mb-2 block text-sm font-black text-slate-200">
+              Content to review
+            </label>
+
+            <textarea
+              id="analysis-content"
+              name="analysis-content"
+              rows="7"
+              class="w-full rounded-3xl border px-4 py-4 text-sm shadow-inner focus:outline-none"
+              placeholder="Paste the caption, script, product post, hook, launch copy, or campaign idea you want feedback on..."
+            ></textarea>
+          </div>
+
+          <div class="grid gap-4 md:grid-cols-2">
+            <div>
+              <label for="analysis-platform" class="mb-2 block text-sm font-black text-slate-200">
+                Platform optional
+              </label>
+
+              <input
+                id="analysis-platform"
+                type="text"
+                placeholder="e.g. Instagram, TikTok, Facebook, YouTube"
+                class="w-full rounded-3xl border px-4 py-4 text-sm shadow-inner focus:outline-none"
+              />
+            </div>
+
+            <div>
+              <label for="analysis-goals" class="mb-2 block text-sm font-black text-slate-200">
+                Goals optional
+              </label>
+
+              <input
+                id="analysis-goals"
+                type="text"
+                placeholder="Increase saves, drive sign-ups, tease launch..."
+                class="w-full rounded-3xl border px-4 py-4 text-sm shadow-inner focus:outline-none"
+              />
+            </div>
+          </div>
+
+          <div class="flex flex-col gap-4 sm:flex-row sm:items-center">
+            <button
+              id="analysis-submit"
+              type="submit"
+              class="inline-flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-cyan-300 via-blue-400 to-purple-400 px-7 py-4 text-sm font-black text-slate-950 shadow-glow transition duration-300 hover:-translate-y-1 hover:brightness-110 focus:outline-none focus:ring-2 focus:ring-cyan-300"
+            >
+              <i data-feather="message-circle" class="h-4 w-4"></i>
+              Analyze my content
+            </button>
+
+            <p id="analysis-status" class="min-h-6 text-sm font-bold text-cyan-100"></p>
+          </div>
+        </form>
+
+        <div
+          id="analysis-error"
+          class="mt-5 hidden rounded-2xl border border-rose-300/30 bg-rose-500/10 px-4 py-3 text-sm font-semibold text-rose-100"
+        ></div>
+
+        <div id="analysis-result" class="mt-8 hidden p-5 md:p-6">
+          <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <p class="text-xs font-black uppercase tracking-[0.18em] text-cyan-200">Generated Output</p>
+              <h3 class="mt-2 text-xl font-black text-white">AI Recommendations</h3>
+            </div>
+
+            <div class="flex items-center gap-2 text-xs font-bold text-slate-400">
+              <span class="status-dot"></span>
+              Result ready
+            </div>
+          </div>
+
+          <pre
+            id="analysis-output"
+            class="mt-5 max-h-[680px] overflow-auto whitespace-pre-wrap rounded-3xl border p-5 text-sm leading-7 shadow-inner"
+          ></pre>
+        </div>
+      </div>
+    </section>
+
+    <!-- Bottom System Feed -->
+    <section class="mt-10 grid gap-6 lg:grid-cols-3">
+      <article class="holo-card rounded-3xl p-6">
+        <div class="flex items-center justify-between">
+          <h3 class="text-lg font-black text-white">Next Best Move</h3>
+          <i data-feather="command" class="h-5 w-5 text-cyan-200"></i>
+        </div>
+        <p class="mt-3 text-sm leading-7 text-slate-400">
+          Review one recent post, create one improved version, then export it into your next platform-specific draft.
+        </p>
+      </article>
+
+      <article class="holo-card rounded-3xl p-6">
+        <div class="flex items-center justify-between">
+          <h3 class="text-lg font-black text-white">Protection Layer</h3>
+          <i data-feather="shield" class="h-5 w-5 text-emerald-200"></i>
+        </div>
+        <p class="mt-3 text-sm leading-7 text-slate-400">
+          Session checks stay active, and the backend still enforces authentication through your existing API.
+        </p>
+      </article>
+
+      <article class="holo-card rounded-3xl p-6">
+        <div class="flex items-center justify-between">
+          <h3 class="text-lg font-black text-white">Publishing Radar</h3>
+          <i data-feather="radio" class="h-5 w-5 text-purple-200"></i>
+        </div>
+        <p class="mt-3 text-sm leading-7 text-slate-400">
+          Use analytics and AI feedback together to build better hooks, clearer calls-to-action, and stronger content rhythm.
+        </p>
+      </article>
+    </section>
+  </main>
+
+  <custom-footer></custom-footer>
+
+  <script src="assets/js/dashboard.js"></script>
+  <script src="script.js"></script>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      if (window.feather) {
+        feather.replace();
+      }
+
+      const clock = document.getElementById('live-clock');
+      const focusButton = document.getElementById('focus-mode-button');
+      const quickActions = document.querySelectorAll('.quick-action');
+
+      function updateClock() {
+        if (!clock) {
+          return;
+        }
+
+        const now = new Date();
+
+        clock.textContent = new Intl.DateTimeFormat('en-GB', {
+          weekday: 'short',
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit'
+        }).format(now);
+      }
+
+      updateClock();
+      window.setInterval(updateClock, 1000);
+
+      quickActions.forEach((action) => {
+        action.addEventListener('mouseenter', () => {
+          quickActions.forEach((item) => item.classList.remove('quick-action-active'));
+          action.classList.add('quick-action-active');
+        });
+
+        action.addEventListener('mouseleave', () => {
+          action.classList.remove('quick-action-active');
+        });
+      });
+
+      if (focusButton) {
+        focusButton.addEventListener('click', () => {
+          document.body.classList.toggle('creatorflow-focus-mode');
+
+          const isActive = document.body.classList.contains('creatorflow-focus-mode');
+
+          focusButton.classList.toggle('quick-action-active', isActive);
+          focusButton.innerHTML = isActive
+            ? '<i data-feather="eye" class="h-4 w-4"></i> Focus Active'
+            : '<i data-feather="target" class="h-4 w-4"></i> Focus Mode';
+
+          if (window.feather) {
+            feather.replace();
+          }
+
+          const analyzer = document.getElementById('content-analyzer');
+
+          if (isActive && analyzer) {
+            analyzer.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }
+        });
+      }
+    });
+  </script>
+</body>
+</html>
+```

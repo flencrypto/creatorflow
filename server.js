@@ -1,34 +1,47 @@
 // server.js
+import path from 'node:path';
+import crypto from 'node:crypto';
+import { fileURLToPath } from 'node:url';
+
 import express from 'express';
 import dotenv from 'dotenv';
 import cors from 'cors';
 import session from 'express-session';
+import RedisStore from 'connect-redis';
+import { createClient as createRedisClient } from 'redis';
 import passport from 'passport';
 import multer from 'multer';
-import crypto from 'node:crypto';
 import { z } from 'zod';
+import csurf from 'csurf';
+import helmet from 'helmet';
 import { Strategy as GoogleStrategy } from 'passport-google-oauth20';
 import { Strategy as FacebookStrategy } from 'passport-facebook';
 
-import { generateContentWithFallback } from './lib/openai.js';
-import { createOpenAiModelService } from './lib/openai-model-service.js';
 import {
-  createImageEdit,
-  createImageGeneration,
-  createImageVariation,
-  createVideoJob,
-  deleteVideoJob,
-  downloadVideoContent,
-  listVideoJobs,
-  remixVideoJob,
-  retrieveVideoJob,
-} from './lib/openai-media.js';
+  generateContentWithFallback,
+  VOICE_PERSONAS,
+  getAvailableVoices,
+  generateWithVoice,
+  validateContentForVoice,
+} from './lib/openai.js';
+import { createOpenAiModelService } from './lib/openai-model-service.js';
+import { fetchWithRetry, readJsonResponse } from './lib/http-client.js';
 
 dotenv.config();
+
+// Pre-compute the comma-separated list of voice IDs once to avoid rebuilding it
+// on every request that returns a validation error for an invalid voice ID.
+const AVAILABLE_VOICE_IDS = Object.keys(VOICE_PERSONAS).join(', ');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 const NODE_ENV = process.env.NODE_ENV || 'development';
+const isProduction = NODE_ENV === 'production';
+const isTest = NODE_ENV === 'test';
+
+const moduleFilename = fileURLToPath(import.meta.url);
+const moduleDirectory = path.dirname(moduleFilename);
+const publicDirectory = path.join(moduleDirectory, 'public');
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -37,8 +50,22 @@ const upload = multer({
   },
 });
 
+const SESSION_COOKIE_NAME = 'creatorflow.sid';
+const sessionCookieConfig = {
+  httpOnly: true,
+  sameSite: 'lax',
+  secure: isProduction,
+  maxAge: 1000 * 60 * 60 * 4, // 4 hours
+};
+
 const SESSION_SECRET = process.env.SESSION_SECRET;
-if (!SESSION_SECRET) {
+if (!SESSION_SECRET && isProduction) {
+  throw new Error('SESSION_SECRET is required in production and must be a strong, unpredictable value.');
+}
+
+if (SESSION_SECRET && SESSION_SECRET.length < 32 && isProduction) {
+  throw new Error('SESSION_SECRET must be at least 32 characters in production.');
+} else if (!SESSION_SECRET) {
   console.warn(
     '[WARN] SESSION_SECRET not set. Falling back to an insecure default for local development. Configure SESSION_SECRET in production.'
   );
@@ -183,11 +210,13 @@ function createOAuthStateGuard(provider, failureRedirect) {
 const resolvedOpenApiKey =
   process.env.OPEN_API_KEY ?? process.env.OPEN_AI_KEY ?? process.env.AI_API_KEY ?? null;
 
-if (!process.env.OPEN_API_KEY && process.env.OPEN_AI_KEY) {
+if (process.env.OPEN_AI_KEY && !process.env.OPEN_API_KEY) {
   process.env.OPEN_API_KEY = process.env.OPEN_AI_KEY;
 }
 
 const OPEN_API_KEY = resolvedOpenApiKey;
+const PERPLEXITY_API_KEY = process.env.API_KEY;
+
 const connectorsCatalog = [
   {
     id: 'openai-content-generator',
@@ -221,11 +250,29 @@ const connectorsCatalog = [
     actions: { testable: true, suggestions: true },
     requires: ['OPEN_API_KEY'],
   },
+  {
+    id: 'perplexity-research',
+    provider: 'perplexity',
+    name: 'Perplexity Deep Research',
+    category: 'AI Insights',
+    description:
+      'Conduct real-time research on trends, audience insights, and competitive analysis with web access.',
+    features: [
+      'Real-time web research',
+      'Competitive content analysis',
+      'Audience insights and trends',
+      'Cited sources',
+    ],
+    documentationUrl: 'https://docs.perplexity.ai',
+    actions: { testable: true, suggestions: false },
+    requires: ['API_KEY'],
+  },
 ];
 
 const openAiModelService = OPEN_API_KEY
   ? createOpenAiModelService({ apiKey: OPEN_API_KEY, logger: console })
   : null;
+
 if (!OPEN_API_KEY) {
   console.warn(
     '[WARN] OPEN_API_KEY not set. /api/generate will return 500 until you configure it. Add OPEN_API_KEY (or the OPEN_AI_KEY repository secret) to resolve this.'
@@ -236,17 +283,118 @@ if (!OPEN_API_KEY) {
   console.warn('[WARN] Falling back to legacy AI_API_KEY environment variable.');
 }
 
+if (PERPLEXITY_API_KEY) {
+  console.info('[INFO] Perplexity API configured for deep research capabilities.');
+} else {
+  console.warn(
+    '[WARN] API_KEY (Perplexity) not set. /api/research endpoints will return 503 until you configure it.'
+  );
+}
+
 const corsOrigins = process.env.CORS_ORIGIN
   ? process.env.CORS_ORIGIN.split(',').map((origin) => origin.trim()).filter(Boolean)
   : null;
+
+const defaultDevelopmentOrigins = ['http://localhost:3000'];
+const effectiveCorsOrigins =
+  corsOrigins && corsOrigins.length > 0
+    ? corsOrigins
+    : isProduction
+      ? []
+      : defaultDevelopmentOrigins;
+
+if (effectiveCorsOrigins.length === 0) {
+  throw new Error('CORS_ORIGIN is required in production to define the allowed origin allowlist.');
+}
+
+const allowedOrigins = new Set(effectiveCorsOrigins);
+
+const redisUrl = process.env.REDIS_URL;
+let sessionStore;
+
+if (redisUrl) {
+  const redisClient = createRedisClient({ url: redisUrl });
+  redisClient.on('error', (err) => {
+    console.error('[ERROR] Redis client error', err);
+  });
+
+  try {
+    await redisClient.connect();
+    sessionStore = new RedisStore({
+      client: redisClient,
+      prefix: 'creatorflow:sess:',
+      disableTouch: true,
+    });
+  } catch (error) {
+    if (isProduction) {
+      throw new Error('Failed to connect to Redis session store.');
+    }
+    console.warn('[WARN] Redis connection failed. Falling back to in-memory session store for local development.', error);
+  }
+} else if (isProduction) {
+  throw new Error('REDIS_URL is required in production for persistent session storage.');
+} else {
+  console.warn('[WARN] REDIS_URL not set. Falling back to in-memory session store for local development only.');
+}
 
 if (process.env.TRUST_PROXY === 'true') {
   app.set('trust proxy', 1);
 }
 
+const contentSecurityPolicy = {
+  directives: {
+    defaultSrc: ["'self'"],
+    scriptSrc: [
+      "'self'",
+      "'unsafe-inline'",
+      'https://cdn.tailwindcss.com',
+      'https://unpkg.com',
+      'https://cdn.jsdelivr.net',
+    ],
+    styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+    fontSrc: ["'self'", 'https://fonts.gstatic.com', 'data:'],
+    imgSrc: ["'self'", 'data:', 'blob:'],
+    connectSrc: ["'self'"],
+    objectSrc: ["'none'"],
+    baseUri: ["'self'"],
+    frameAncestors: ["'none'"],
+    formAction: ["'self'"],
+    upgradeInsecureRequests: [],
+  },
+};
+
+app.use(
+  helmet({
+    contentSecurityPolicy,
+    crossOriginEmbedderPolicy: false,
+    referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
+    frameguard: { action: 'deny' },
+    permissionsPolicy: {
+      features: {
+        camera: [],
+        geolocation: [],
+        microphone: [],
+        payment: [],
+      },
+    },
+  })
+);
+
 app.use(
   cors({
-    origin: corsOrigins && corsOrigins.length > 0 ? corsOrigins : true,
+    origin(origin, callback) {
+      if (!origin) {
+        return callback(null, true);
+      }
+
+      if (allowedOrigins.has(origin)) {
+        return callback(null, true);
+      }
+
+      const error = new Error('CORS origin denied');
+      error.status = 403;
+      return callback(error);
+    },
     credentials: true,
   })
 );
@@ -257,16 +405,153 @@ app.use(
     secret: SESSION_SECRET || 'development-session-secret',
     resave: false,
     saveUninitialized: false,
-    cookie: {
-      httpOnly: true,
-      sameSite: 'lax',
-      secure: NODE_ENV === 'production',
-      maxAge: 1000 * 60 * 60 * 4, // 4 hours
-    },
+    store: sessionStore,
+    cookie: sessionCookieConfig,
+    name: SESSION_COOKIE_NAME,
   })
 );
+const csrfProtection = csurf({ cookie: false });
 app.use(passport.initialize());
 app.use(passport.session());
+
+// ============================================
+// Voice Routes
+// ============================================
+
+// GET /api/voices - List available voice personas
+app.get('/api/voices', (_req, res) => {
+  const voices = getAvailableVoices();
+  res.json({
+    ok: true,
+    voices,
+    count: voices.length,
+  });
+});
+
+// POST /api/generate/with-voice - Generate content with specific voice
+app.post('/api/generate/with-voice', async (req, res) => {
+  if (!OPEN_API_KEY) {
+    return res.status(503).json({
+      ok: false,
+      error:
+        'OpenAI integration is not configured. Add OPEN_API_KEY (or set the OPEN_AI_KEY secret) on the server to enable content generation.',
+    });
+  }
+
+  const { input, voiceId, template, platform, tone } = req.body || {};
+
+  // Validate voice
+  if (!voiceId || !VOICE_PERSONAS[voiceId]) {
+    return res.status(400).json({
+      ok: false,
+      error: `Invalid voice ID. Available voices: ${AVAILABLE_VOICE_IDS}`,
+    });
+  }
+
+  // Validate input
+  if (!input || typeof input !== 'string' || input.trim().length === 0) {
+    return res.status(400).json({
+      ok: false,
+      error: 'input is required and must be a non-empty string.',
+    });
+  }
+
+  if (input.length > 5000) {
+    return res.status(400).json({
+      ok: false,
+      error: 'input must be 5000 characters or less.',
+    });
+  }
+
+  try {
+    let prompt = input;
+
+    // If template is provided, use it to structure the prompt
+    if (template) {
+      const allowedTemplates = ['post', 'script', 'caption', 'article', 'freeform'];
+      if (!allowedTemplates.includes(template)) {
+        return res.status(400).json({
+          ok: false,
+          error: `Invalid template. Available: ${allowedTemplates.join(', ')}`,
+        });
+      }
+
+      if (template !== 'freeform') {
+        prompt = buildPrompt({ template, input, platform, tone });
+      }
+    }
+
+    // Generate with voice persona
+    const content = await generateWithVoice({
+      apiKey: OPEN_API_KEY,
+      prompt,
+      voiceId,
+      overrides: {
+        temperature: tone === 'creative' ? 0.9 : 0.7,
+      },
+    });
+
+    // Validate against prohibited words if applicable
+    const persona = VOICE_PERSONAS[voiceId];
+    const prohibitedWordsFound = validateContentForVoice(content, voiceId);
+
+    return res.json({
+      ok: true,
+      voiceId,
+      voice: persona.name,
+      template: template || null,
+      platform: platform || null,
+      content,
+      warnings: prohibitedWordsFound.length > 0 
+        ? {
+            message: 'Content contains prohibited words for this voice',
+            words: prohibitedWordsFound,
+          }
+        : null,
+    });
+  } catch (err) {
+    console.error('[ERROR] /api/generate/with-voice', err);
+    return res.status(500).json({
+      ok: false,
+      error: err.message || 'Failed to generate content with voice.',
+    });
+  }
+});
+
+// POST /api/voices/validate - Validate content against a voice's prohibited words
+app.post('/api/voices/validate', (req, res) => {
+  const { content, voiceId } = req.body || {};
+
+  if (!voiceId || !VOICE_PERSONAS[voiceId]) {
+    return res.status(400).json({
+      ok: false,
+      error: `Invalid voice ID. Available voices: ${AVAILABLE_VOICE_IDS}`,
+    });
+  }
+
+  if (!content || typeof content !== 'string') {
+    return res.status(400).json({
+      ok: false,
+      error: 'content is required and must be a string.',
+    });
+  }
+
+  const prohibitedWords = validateContentForVoice(content, voiceId);
+  const persona = VOICE_PERSONAS[voiceId];
+
+  res.json({
+    ok: true,
+    voiceId,
+    voice: persona.name,
+    prohibitedWordsFound: prohibitedWords,
+    isValid: prohibitedWords.length === 0,
+    contentLength: content.length,
+  });
+});
+
+// ============================================
+// Passport Configuration
+// ============================================
 
 function mapPassportProfile(profile) {
   return {
@@ -315,7 +600,7 @@ if (GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET) {
 
   app.get(
     '/auth/google/callback',
-    createOAuthStateGuard('google', '/login.html?error=google'),
+    createOAuthStateGuard('google', '/login.html?error=google_oauth_state'),
     passport.authenticate('google', {
       failureRedirect: '/login.html?error=google',
       failureMessage: true,
@@ -355,7 +640,7 @@ if (FACEBOOK_APP_ID && FACEBOOK_APP_SECRET) {
 
   app.get(
     '/auth/facebook/callback',
-    createOAuthStateGuard('facebook', '/login.html?error=facebook'),
+    createOAuthStateGuard('facebook', '/login.html?error=facebook_oauth_state'),
     passport.authenticate('facebook', {
       failureRedirect: '/login.html?error=facebook',
       failureMessage: true,
@@ -374,6 +659,10 @@ app.get('/auth/providers', (req, res) => {
   res.json({ providers: configuredAuthProviders });
 });
 
+// ============================================
+// Authentication & Session Routes
+// ============================================
+
 app.get('/api/auth/status', (req, res) => {
   const isAuthenticated = Boolean(req.isAuthenticated && req.isAuthenticated());
   res.json({
@@ -382,7 +671,11 @@ app.get('/api/auth/status', (req, res) => {
   });
 });
 
-app.post('/api/auth/logout', (req, res) => {
+app.get('/api/auth/csrf', csrfProtection, (req, res) => {
+  res.json({ csrfToken: req.csrfToken() });
+});
+
+app.post('/api/auth/logout', requireAuth, csrfProtection, (req, res) => {
   req.logout((err) => {
     if (err) {
       console.error('[ERROR] logout failed', err);
@@ -391,7 +684,11 @@ app.post('/api/auth/logout', (req, res) => {
 
     if (req.session) {
       req.session.destroy(() => {
-        res.clearCookie('connect.sid');
+        res.clearCookie(SESSION_COOKIE_NAME, {
+          httpOnly: sessionCookieConfig.httpOnly,
+          sameSite: sessionCookieConfig.sameSite,
+          secure: sessionCookieConfig.secure,
+        });
         res.json({ ok: true });
       });
     } else {
@@ -399,6 +696,32 @@ app.post('/api/auth/logout', (req, res) => {
     }
   });
 });
+
+if (isTest) {
+  app.post('/__test/login', (req, res) => {
+    const { userId, displayName } = req.body || {};
+    const user = {
+      id: userId || 'test-user',
+      displayName: displayName || 'Test User',
+      provider: 'test',
+      emails: [],
+      photos: [],
+    };
+
+    req.login(user, (err) => {
+      if (err) {
+        console.error('[ERROR] test login failed', err);
+        return res.status(500).json({ ok: false, error: 'Failed to establish session.' });
+      }
+
+      return res.json({ ok: true, user });
+    });
+  });
+}
+
+// ============================================
+// Middleware & Helper Functions
+// ============================================
 
 function requireAuth(req, res, next) {
   if (req.isAuthenticated && req.isAuthenticated()) {
@@ -410,13 +733,25 @@ function requireAuth(req, res, next) {
 
 function buildIntegrationCatalogResponse() {
   const openAiConfigured = Boolean(OPEN_API_KEY);
+  const perplexityConfigured = Boolean(PERPLEXITY_API_KEY);
 
   return connectorsCatalog.map((connector) => {
-    const connected = connector.provider === 'openai' ? openAiConfigured : false;
+    let connected = false;
+    let statusMessage = '';
+
+    if (connector.provider === 'openai') {
+      connected = openAiConfigured;
+      statusMessage = connected
+        ? 'Active via server-side OpenAI credential.'
+        : 'Add OPEN_API_KEY (or set the OPEN_AI_KEY secret) to enable this connector.';
+    } else if (connector.provider === 'perplexity') {
+      connected = perplexityConfigured;
+      statusMessage = connected
+        ? 'Active via server-side Perplexity credential.'
+        : 'Add API_KEY (Perplexity) to enable this connector.';
+    }
+
     const status = connected ? 'connected' : 'requires_configuration';
-    const statusMessage = connected
-      ? 'Active via server-side OpenAI credential.'
-      : 'Add OPEN_API_KEY (or set the OPEN_AI_KEY secret) to enable this connector.';
 
     return {
       ...connector,
@@ -427,171 +762,114 @@ function buildIntegrationCatalogResponse() {
   });
 }
 
+function extractBalancedJsonFragment(source, startIndex) {
+  if (startIndex < 0 || startIndex >= source.length) {
+    return null;
+  }
+
+  const openingChar = source[startIndex];
+  const closingChar = openingChar === '{' ? '}' : openingChar === '[' ? ']' : null;
+
+  if (!closingChar) {
+    return null;
+  }
+
+  let depth = 0;
+  let inString = false;
+  let isEscaped = false;
+
+  for (let index = startIndex; index < source.length; index += 1) {
+    const char = source[index];
+
+    if (inString) {
+      if (isEscaped) {
+        isEscaped = false;
+      } else if (char === '\\') {
+        isEscaped = true;
+      } else if (char === '"') {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (char === '"') {
+      inString = true;
+      continue;
+    }
+
+    if (char === openingChar) {
+      depth += 1;
+    } else if (char === closingChar) {
+      depth -= 1;
+      if (depth === 0) {
+        return source.slice(startIndex, index + 1);
+      }
+    }
+  }
+
+  return source.slice(startIndex);
+}
+
 function safeParseJsonPayload(text) {
   if (typeof text !== 'string') {
     return null;
   }
 
-  const normalised = text
-    .trim()
-    .replace(/^```json\s*/i, '')
-    .replace(/```$/i, '')
-    .trim();
-
-  try {
-    return JSON.parse(normalised);
-  } catch (error) {
-    console.warn('[WARN] Failed to parse JSON payload from AI response.', error);
-    return null;
-  }
-}
-
-const createVideoSchema = z.object({
-  prompt: z.string().min(1).max(2000),
-  model: z
-    .string()
-    .trim()
-    .min(1)
-    .max(100)
-    .optional(),
-  seconds: z
-    .coerce
-    .number()
-    .int()
-    .min(1)
-    .max(60)
-    .optional(),
-  size: z
-    .string()
-    .trim()
-    .regex(/^\d+x\d+$/)
-    .optional(),
-  quality: z
-    .string()
-    .trim()
-    .max(20)
-    .optional(),
-});
-
-const remixVideoSchema = z.object({
-  prompt: z.string().min(1).max(2000),
-});
-
-const listVideosSchema = z.object({
-  after: z
-    .string()
-    .trim()
-    .min(1)
-    .max(128)
-    .optional(),
-  limit: z
-    .coerce
-    .number()
-    .int()
-    .min(1)
-    .max(50)
-    .optional(),
-  order: z.enum(['asc', 'desc']).optional(),
-});
-
-const downloadVariantSchema = z.object({
-  variant: z
-    .string()
-    .trim()
-    .min(1)
-    .max(64)
-    .optional(),
-});
-
-const imageGenerationSchema = z.object({
-  prompt: z.string().min(1).max(32_000),
-  model: z.string().trim().min(1).max(100).optional(),
-  n: z.coerce.number().int().min(1).max(10).optional(),
-  size: z.string().trim().min(1).max(20).optional(),
-  responseFormat: z.enum(['url', 'b64_json']).optional(),
-  background: z.enum(['transparent', 'opaque', 'auto']).optional(),
-  quality: z.string().trim().min(1).max(20).optional(),
-  style: z.string().trim().min(1).max(20).optional(),
-  user: z.string().trim().min(1).max(64).optional(),
-  moderation: z.string().trim().min(1).max(20).optional(),
-  outputFormat: z.string().trim().min(1).max(10).optional(),
-  outputCompression: z.coerce.number().int().min(0).max(100).optional(),
-  partialImages: z.coerce.number().int().min(0).max(3).optional(),
-  stream: z.coerce.boolean().optional(),
-});
-
-const imageEditOptionsSchema = z.object({
-  prompt: z.string().min(1).max(32_000),
-  model: z.string().trim().min(1).max(100).optional(),
-  n: z.coerce.number().int().min(1).max(10).optional(),
-  size: z.string().trim().min(1).max(20).optional(),
-  responseFormat: z.enum(['url', 'b64_json']).optional(),
-  background: z.enum(['transparent', 'opaque', 'auto']).optional(),
-  quality: z.string().trim().min(1).max(20).optional(),
-  user: z.string().trim().min(1).max(64).optional(),
-  outputFormat: z.string().trim().min(1).max(10).optional(),
-  outputCompression: z.coerce.number().int().min(0).max(100).optional(),
-});
-
-const imageVariationOptionsSchema = z.object({
-  model: z.string().trim().min(1).max(100).optional(),
-  n: z.coerce.number().int().min(1).max(10).optional(),
-  size: z.string().trim().min(1).max(20).optional(),
-  responseFormat: z.enum(['url', 'b64_json']).optional(),
-  user: z.string().trim().min(1).max(64).optional(),
-});
-
-function toSnakeCasePayload(data) {
-  return Object.fromEntries(
-    Object.entries(data).map(([key, value]) => {
-      if (value === undefined || value === null) {
-        return [null, null];
-      }
-
-      const snakeKey = key.replace(/[A-Z]/g, (char) => `_${char.toLowerCase()}`);
-      return [snakeKey, value];
-    }).filter(([key]) => Boolean(key))
-  );
-}
-
-function normaliseMulterFile(file) {
-  if (!file) {
+  const trimmed = text.trim();
+  if (!trimmed) {
     return null;
   }
 
-  return {
-    buffer: file.buffer,
-    mimetype: file.mimetype,
-    filename: file.originalname,
+  // Build an ordered list of candidates (most likely first) without duplicates.
+  // Using an array preserves insertion order and lets us skip the Set overhead.
+  const seen = new Set();
+  const candidates = [];
+
+  const addCandidate = (s) => {
+    if (s && !seen.has(s)) {
+      seen.add(s);
+      candidates.push(s);
+    }
   };
-}
 
-function normaliseErrorStatus(error, fallback = 500) {
-  const status = typeof error?.status === 'number' ? error.status : fallback;
-  if (status >= 400 && status <= 599) {
-    return status;
+  const fencedMatch = trimmed.match(/```(?:json)?\s*([\S\s]*?)\s*```/i);
+  if (fencedMatch && typeof fencedMatch[1] === 'string') {
+    addCandidate(fencedMatch[1].trim());
   }
-  return fallback;
-}
 
-function extractOpenAiErrorMessage(error, fallbackMessage) {
-  if (error?.status && error.status >= 400 && error.status < 500) {
-    if (typeof error?.body === 'string' && error.body.trim().length > 0) {
-      return error.body.trim().slice(0, 500);
-    }
-    if (typeof error?.message === 'string' && error.message.trim().length > 0) {
-      return error.message.trim();
+  addCandidate(trimmed);
+
+  const startIndex = trimmed.search(/[[{]/);
+  if (startIndex >= 0) {
+    addCandidate(trimmed.slice(startIndex).trim());
+
+    const balanced = extractBalancedJsonFragment(trimmed, startIndex);
+    if (balanced) {
+      addCandidate(balanced.trim());
     }
   }
 
-  if (typeof error?.message === 'string' && error.message.trim().length > 0 && error.message.length < 140) {
-    return error.message.trim();
+  let lastError = null;
+
+  for (const candidate of candidates) {
+    try {
+      return JSON.parse(candidate);
+    } catch (error) {
+      lastError = error;
+    }
   }
 
-  return fallbackMessage;
+  if (lastError) {
+    console.warn('[WARN] Failed to parse JSON payload from AI response.', lastError);
+  }
+
+  return null;
 }
 
-// Basic input validation helper
+// ============================================
+// Validation Schemas
+// ============================================
+
 function validateGenerateBody(body) {
   const { template, input, platform, tone } = body || {};
 
@@ -611,7 +889,6 @@ function validateGenerateBody(body) {
     return 'Invalid tone.';
   }
 
-  // Platform is optional but if provided, must be short
   if (platform && platform.length > 40) {
     return 'Platform value is too long.';
   }
@@ -641,7 +918,6 @@ function validateAnalysisBody(body) {
   return null;
 }
 
-// Map template to system-style instructions
 function buildPrompt({ template, input, platform, tone }) {
   const safePlatform = platform || 'social media';
   const safeTone = tone || 'default';
@@ -686,16 +962,13 @@ ${input}
 `.trim();
 
     default:
-      // Should never hit because of validation
       return input;
   }
 }
 
 function buildAnalysisPrompt({ content, platform, goals, creatorName }) {
   const safePlatform = platform ? platform : 'social media';
-  const goalText = goals
-    ? `Creator goals: ${goals}`
-    : 'Focus on clarity, engagement, and conversion.';
+  const goalText = goals ? `Creator goals: ${goals}` : 'Focus on clarity, engagement, and conversion.';
   const creatorText = creatorName
     ? `The content author is ${creatorName}.`
     : 'The creator is seeking actionable coaching.';
@@ -715,19 +988,6 @@ Content to analyze:
 """
 ${content.trim()}
 """`;
-}
-
-// This is where you call your provider.
-// Below is a skeleton for an OpenAI-style chat completion.
-// Swap endpoint/model as needed.
-function createTimeoutSignal(timeoutMs = 8000) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-
-  return {
-    signal: controller.signal,
-    dispose: () => clearTimeout(timeout),
-  };
 }
 
 async function callAiProvider(prompt, options = {}) {
@@ -766,7 +1026,9 @@ function validateConnectorSuggestionBody(body) {
   }
 
   if (Array.isArray(channels)) {
-    const invalidChannel = channels.find((channel) => typeof channel !== 'string' || channel.length > 40);
+    const invalidChannel = channels.find(
+      (channel) => typeof channel !== 'string' || channel.length > 40
+    );
     if (invalidChannel) {
       return 'channels must contain short string values (<= 40 chars).';
     }
@@ -783,9 +1045,10 @@ function buildConnectorSuggestionPrompt({ useCase, audience, channels, tone }) {
   const audienceText = audience
     ? `Target audience: ${audience}.`
     : 'Target audience: modern creator economy teams.';
-  const channelsText = Array.isArray(channels) && channels.length > 0
-    ? `Priority channels: ${channels.join(', ')}.`
-    : 'Priority channels: Instagram, TikTok, YouTube, LinkedIn.';
+  const channelsText =
+    Array.isArray(channels) && channels.length > 0
+      ? `Priority channels: ${channels.join(', ')}.`
+      : 'Priority channels: Instagram, TikTok, YouTube, LinkedIn.';
   const toneText = tone
     ? `Preferred collaboration tone: ${tone}.`
     : 'Preferred collaboration tone: proactive and friendly.';
@@ -818,7 +1081,9 @@ async function sendOpenAiTestResponse(res) {
     res.json({ ok: true });
   } catch (err) {
     console.error('[ERROR] OpenAI integration test failed', err);
-    res.status(500).json({ ok: false, error: err.message || 'OpenAI integration test failed.' });
+    res
+      .status(500)
+      .json({ ok: false, error: err.message || 'OpenAI integration test failed.' });
   }
 }
 
@@ -826,27 +1091,30 @@ async function performOpenAiHealthCheck() {
   if (!OPEN_API_KEY) {
     throw new Error('OPEN_API_KEY not configured. Provide OPEN_API_KEY or OPEN_AI_KEY.');
   }
-
-  const { signal, dispose } = createTimeoutSignal();
-
-  try {
-    const response = await fetch('https://api.openai.com/v1/models?limit=1', {
+  const response = await fetchWithRetry(
+    'https://api.openai.com/v1/models?limit=1',
+    {
       headers: {
         Authorization: `Bearer ${OPEN_API_KEY}`,
       },
-      signal,
-    });
-
-    if (!response.ok) {
-      const text = await response.text().catch(() => '');
-      throw new Error(`OpenAI status check failed: ${response.status} - ${text}`);
+    },
+    {
+      timeoutMs: Number(process.env.HTTP_TIMEOUT_MS ?? '8000'),
+      retries: Number(process.env.HTTP_MAX_RETRIES ?? '3'),
     }
+  );
 
-    await response.json();
-  } finally {
-    dispose();
+  if (!response.ok) {
+    const text = await response.text().catch(() => '');
+    throw new Error(`OpenAI status check failed: ${response.status} - ${text}`);
   }
+
+  await readJsonResponse(response);
 }
+
+// ============================================
+// OpenAI Routes
+// ============================================
 
 app.post('/api/generate', async (req, res) => {
   if (!OPEN_API_KEY) {
@@ -868,7 +1136,6 @@ app.post('/api/generate', async (req, res) => {
     const prompt = buildPrompt({ template, input, platform, tone });
     const aiContent = await callAiProvider(prompt);
 
-    // Basic structured payload for future workflows
     return res.json({
       ok: true,
       template,
@@ -885,7 +1152,7 @@ app.post('/api/generate', async (req, res) => {
   }
 });
 
-app.post('/api/content/analysis', requireAuth, async (req, res) => {
+app.post('/api/content/analysis', requireAuth, csrfProtection, async (req, res) => {
   if (!OPEN_API_KEY) {
     return res.status(503).json({
       ok: false,
@@ -938,6 +1205,9 @@ app.get('/api/integrations', (_req, res) => {
         cachedModels: cacheInfo.size,
         cacheExpiresAt: cacheInfo.expiresAt,
       },
+      perplexity: {
+        configured: Boolean(PERPLEXITY_API_KEY),
+      },
     },
   });
 });
@@ -952,7 +1222,9 @@ app.get('/api/integrations/openai/status', (_req, res) => {
 
 app.get('/api/integrations/openai/models', async (_req, res) => {
   if (!openAiModelService) {
-    return res.status(503).json({ ok: false, error: 'OpenAI integration is not configured.' });
+    return res
+      .status(503)
+      .json({ ok: false, error: 'OpenAI integration is not configured.' });
   }
 
   try {
@@ -964,14 +1236,16 @@ app.get('/api/integrations/openai/models', async (_req, res) => {
   }
 });
 
-app.post('/api/integrations/openai/connectors', async (req, res) => {
+app.post('/api/integrations/openai/connectors', requireAuth, csrfProtection, async (req, res) => {
   const validationError = validateConnectorSuggestionBody(req.body);
   if (validationError) {
     return res.status(400).json({ ok: false, error: validationError });
   }
 
   if (!OPEN_API_KEY) {
-    return res.status(503).json({ ok: false, error: 'OpenAI integration is not configured.' });
+    return res
+      .status(503)
+      .json({ ok: false, error: 'OpenAI integration is not configured.' });
   }
 
   try {
@@ -984,103 +1258,44 @@ app.post('/api/integrations/openai/connectors', async (req, res) => {
 
     const parsed = safeParseJsonPayload(aiContent);
     if (parsed && Array.isArray(parsed.connectors)) {
-      return res.json({ ok: true, summary: parsed.summary || null, connectors: parsed.connectors });
+      return res.json({
+        ok: true,
+        summary: parsed.summary || null,
+        connectors: parsed.connectors,
+      });
     }
 
     return res.json({ ok: true, summary: null, connectors: [], raw: aiContent });
   } catch (err) {
     console.error('[ERROR] /api/integrations/openai/connectors', err);
-    res.status(500).json({ ok: false, error: err.message || 'Failed to generate connector plan.' });
+    res
+      .status(500)
+      .json({ ok: false, error: err.message || 'Failed to generate connector plan.' });
   }
 });
 
-app.post('/api/integrations/:id/test', async (req, res) => {
+app.post('/api/integrations/:id/test', requireAuth, csrfProtection, async (req, res) => {
   if (req.params.id !== 'openai') {
     return res.status(404).json({ ok: false, error: 'Unknown integration id.' });
   }
 
   if (!OPEN_API_KEY) {
-    return res.status(503).json({ ok: false, error: 'OpenAI integration is not configured.' });
+    return res
+      .status(503)
+      .json({ ok: false, error: 'OpenAI integration is not configured.' });
   }
 
   await sendOpenAiTestResponse(res);
 });
 
-app.post('/api/integrations/openai/test', async (_req, res) => {
+app.post('/api/integrations/openai/test', requireAuth, csrfProtection, async (_req, res) => {
   if (!OPEN_API_KEY) {
-    return res.status(503).json({ ok: false, error: 'OpenAI integration is not configured.' });
+    return res
+      .status(503)
+      .json({ ok: false, error: 'OpenAI integration is not configured.' });
   }
 
   await sendOpenAiTestResponse(res);
-});
-
-app.post(
-  '/api/integrations/openai/videos',
-  requireAuth,
-  upload.single('input_reference'),
-  async (req, res) => {
-    if (!OPEN_API_KEY) {
-      return res.status(503).json({ ok: false, error: 'OpenAI integration is not configured.' });
-    }
-
-    const validation = createVideoSchema.safeParse({
-      prompt: req.body?.prompt,
-      model: req.body?.model,
-      seconds: req.body?.seconds,
-      size: req.body?.size,
-      quality: req.body?.quality,
-    });
-
-    if (!validation.success) {
-      const issue = validation.error.issues[0];
-      return res.status(400).json({ ok: false, error: issue?.message || 'Invalid payload.' });
-    }
-
-    try {
-      const video = await createVideoJob({
-        apiKey: OPEN_API_KEY,
-        ...validation.data,
-        inputReference: normaliseMulterFile(req.file),
-      });
-
-      return res.json({ ok: true, video });
-    } catch (error) {
-      console.error('[ERROR] /api/integrations/openai/videos', error);
-      const status = normaliseErrorStatus(error);
-      return res.status(status).json({
-        ok: false,
-        error: extractOpenAiErrorMessage(error, 'Failed to create video job.'),
-      });
-    }
-  }
-);
-
-app.post('/api/integrations/openai/videos/:videoId/remix', requireAuth, async (req, res) => {
-  if (!OPEN_API_KEY) {
-    return res.status(503).json({ ok: false, error: 'OpenAI integration is not configured.' });
-  }
-
-  const validation = remixVideoSchema.safeParse({ prompt: req.body?.prompt });
-  if (!validation.success) {
-    const issue = validation.error.issues[0];
-    return res.status(400).json({ ok: false, error: issue?.message || 'Invalid payload.' });
-  }
-
-  try {
-    const video = await remixVideoJob({
-      apiKey: OPEN_API_KEY,
-      videoId: req.params.videoId,
-      prompt: validation.data.prompt,
-    });
-    return res.json({ ok: true, video });
-  } catch (error) {
-    console.error('[ERROR] /api/integrations/openai/videos/:videoId/remix', error);
-    const status = normaliseErrorStatus(error);
-    return res.status(status).json({
-      ok: false,
-      error: extractOpenAiErrorMessage(error, 'Failed to remix video.'),
-    });
-  }
 });
 
 app.get('/api/integrations/openai/videos', requireAuth, async (req, res) => {
@@ -1308,20 +1523,21 @@ app.post(
   }
 );
 
-// Serve static files (your HTML/CSS/JS)
-// Keep this after API route definitions so POST/PUT/etc. requests reach handlers instead of
-// returning 405 from the static middleware when assets are missing.
-app.use(
-  express.static('.', {
-    fallthrough: true,
-  })
-); // serves index.html, assets, etc. from project root
+// ============================================
+// Serve Static Files
+// ============================================
 
-const isTestEnvironment = NODE_ENV === 'test';
-const httpServer = isTestEnvironment
-  ? null
-  : app.listen(PORT, () => {
-      console.log(`Server listening on http://localhost:${PORT}`);
-    });
+app.use(express.static(publicDirectory));
 
-export { app, httpServer };
+// ============================================
+// Start Server
+// ============================================
+
+if (process.env.NODE_ENV !== 'test') {
+  app.listen(PORT, () => {
+    console.log(`[INFO] Server running on http://localhost:${PORT}`);
+  });
+}
+
+export { app };
+export default app;
